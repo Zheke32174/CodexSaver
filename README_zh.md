@@ -17,6 +17,119 @@ CodexSaver 是一个 MCP 工具，它把 Codex 变成一个有成本意识的路
 
 ---
 
+## 一眼看懂
+
+CodexSaver 不是想替代 Codex，而是想把**真正需要昂贵判断的部分**留给 Codex，
+把可以标准化、可验证、可并行的部分交给更便宜的 worker。
+
+当前仓库里已经证明的事情：
+
+| 维度 | 当前已经证明的结果 |
+|---|---|
+| 成本 | v2 的 5 任务 benchmark 达到了 `45%` 到 `100%` 的预计节省 |
+| 速度 | v2 成功任务耗时在 `0.03s` 到 `14.95s`；v3 只读 swarm 成功耗时 `6.45s` |
+| 质量 | v2 bounded work packet 能稳定过 verifier；v3 只读 swarm 产出了 `10` 条 findings，质量分 `0.75` |
+| 安全 | 受保护路径、allowlisted commands、沙箱 patch apply、Codex fallback 都是内建能力 |
+
+最重要的一点是：
+
+- v2 是当前成熟的单任务执行通道
+- v3 是正在成型的 specialist 编排通道
+- v3 目前最先站住脚的胜利点是 **只读 specialist 编排**
+
+---
+
+## CodexSaver 最擅长什么
+
+CodexSaver 最强的领域，不是“替代 Codex 做所有代码修改”，而是那些同时满足下面几个条件的任务：
+
+- 低风险
+- 重复性高
+- 容易验证
+- 适合并行
+- 用 Codex 做太贵，但用便宜 worker 做很划算
+
+落到实际场景，CodexSaver 目前最擅长：
+
+- 代码解释
+- 仓库扫描
+- 性能提示
+- docstring / README 维护
+- 有边界的测试生成
+- 文件范围明确的小型重构
+
+CodexSaver 目前不擅长：
+
+- 认证、安全、支付、权限
+- 破坏性迁移
+- 模糊的架构设计
+- 验证链条不清晰的多文件行为修改
+- 任何每一步都必须依赖 Codex 级判断的任务
+
+当前产品判断可以压缩成一句话：
+
+```text
+CodexSaver 先赢在只读 specialist 编排。
+再赢在有边界、可验证的 patch 任务。
+高风险和高歧义任务仍然交给 Codex。
+```
+
+这个顺序很重要，因为它和当前代码能力、当前 benchmark 结论是一致的。
+
+---
+
+## 为什么它真的有效
+
+CodexSaver 在降低成本、提高效率、提升质量上，并不是靠一句“便宜模型替代昂贵模型”。
+它依赖的是一个很明确的技术拆分：
+
+### 1. 为什么更省钱
+
+Codex 只做高价值判断，不再为大量重复劳动买单。
+便宜 worker 负责：
+
+- 解释代码
+- 写文档
+- 生成测试
+- 做小范围、有边界的实现任务
+
+这样昂贵模型不会再为每一个机械步骤付费。
+
+### 2. 为什么更快
+
+当任务可拆解时，CodexSaver 可以把 specialist 并行拉起来：
+
+- 一个 specialist 解释代码
+- 一个 specialist 看性能
+- 一个 specialist 写 docs 或 tests
+
+此时总耗时更接近：
+
+```text
+最长那个 specialist 的耗时 + 编排开销
+```
+
+而不是：
+
+```text
+所有子任务串行耗时相加
+```
+
+### 3. 为什么质量不会掉
+
+CodexSaver 并不会无脑相信 worker 输出。
+它的质量提升来自一套硬约束：
+
+- router 判断任务是否适合下放
+- work packet 限制可写范围
+- sandbox 在隔离环境 apply patch
+- verifier 检查 changed files、diff 大小、命令、失败情况
+- Codex 保留最终审核权
+
+所以它不是“廉价模型乱改代码”，而是“廉价模型在受控边界里工作，昂贵模型保留判断”。
+
+---
+
 ## 这个项目解决什么问题
 
 大多数编码会话其实混着两类完全不同的工作：
@@ -99,6 +212,164 @@ MCP 工具：
 ```text
 codexsaver.delegate_work_packet
 ```
+
+---
+
+## V3：编排式 Specialist
+
+CodexSaver v3 把 v2 的单 worker 扩展成了一个小型 specialist 编排系统。核心变化不是
+“再加几个 prompt”，而是架构升级：
+
+- Codex 继续负责判断和最终审核
+- CodexSaver 先规划 work graph
+- 只读 specialist 可以并行执行
+- patch specialist 复用 v2 的 sandbox + verifier
+- patch 聚合保持保守，一旦同批次输出重叠就回退给 Codex
+
+当前仓库里的 v3 状态：
+
+- `explainer` 和 `perf_reviewer` 已能作为真实 `readonly_swarm` 执行
+- mixed graph 已能通过 v2 work-packet runtime 执行 bounded patch 节点
+- 同一批 patch 节点若 `changed_files` 重叠，会直接返回 `needs_codex`
+- v3 是 CodexSaver 自己的 orchestration 层，不依赖脆弱的 Codex 原生 subagent 私有配置
+
+主要参考：
+
+- [v3 规格](./docs/SPEC_v3.md)
+- [v3 开发任务清单](./docs/V3_TASKS.md)
+- [v3 基准测试，2026-05-14](./docs/benchmarks/v3-benchmark-2026-05-14.md)
+- [v3 项目基准测试，2026-05-15](./docs/benchmarks/v3-project-benchmark-2026-05-15.md)
+
+当前 benchmark 状态：
+
+- `readonly_swarm`：已经真实跑通执行链，但在 2026-05-14 的 fixture 运行里仍出现 provider 回退
+- `impl + tests`：已经真实跑通执行链，但当前仍然偏保守，可能返回 `needs_codex`
+- `impl + docs + explain`：在 2026-05-14 的 fixture 运行里完整成功
+
+这意味着 v3 已经是真实可测的系统，但它目前仍处在“早期可用”阶段，还不是对所有 v2 场景的完整替代。
+
+### 核心卖点：只读 Specialist 编排已经成立
+
+v3 现在最重要的卖点，不再只是概念，而是已经在当前项目的 benchmark 里得到验证。
+在 2026-05-15 的项目级测试中，下面这个只读任务已经完整成功：
+
+- 任务：`Explain installer flow and review performance`
+- 路由：`deepseek`
+- 状态：`success`
+- 预计节省：`52%`
+- 延迟：`6.45s`
+- 质量分：`0.75`
+- 只读 findings：`10`
+
+这就是当前 v3 最清晰的价值点：
+
+- Codex 把解释和性能分析下放给便宜 specialist
+- specialist 可以并行工作
+- 不需要生成 patch
+- 验证逻辑仍然严格
+- 最终判断依然保留给 Codex
+
+这也是目前最适合对外强调的卖点，因为它已经在真实项目测试里站住了。
+
+### 五个项目级任务测试说明了什么
+
+项目级 benchmark 在当前仓库的临时拷贝上跑了 5 个典型任务，结论很明确：
+
+- 5 个任务里，v3 成功了 2 个
+- 2 个成功任务都落在 CodexSaver 当前最强的能力带
+- 其中 1 个是纯只读编排
+- 其中 1 个是 docs + explain 的混合流程
+- 另外 3 个更偏 patch / test 的任务都保守回退成了 `needs_codex`
+
+这说明：
+
+- 只读 specialist 编排已经是一个真实优势
+- bounded patch 编排有潜力，但成熟度还不如只读链路
+- `test_writer` 聚合回放和 patch verification 仍然是当前 v3 的主瓶颈
+
+如果要用一句最诚实的话描述当前 v3：
+
+```text
+只读编排已经成立。
+单个有边界 patch 已经可用。
+复杂 patch 编排仍在成熟中。
+```
+
+CLI 示例：
+
+```bash
+codexsaver orchestrate "Explain config loader logic and review performance" --files codexsaver/config.py
+codexsaver orchestrate "Implement login and add tests" --files src/user_auth.py --dry-run
+codexsaver specialist explainer "Explain this module" --files codexsaver/config.py
+```
+
+可选的项目增强安装：
+
+```bash
+# 低侵入：只往 AGENTS.md 里加一个 CodexSaver 托管块
+codexsaver superpower install --profile basic --workspace .
+
+# 更激进：额外写入 .codex/hooks.json、prompt hook 脚本，以及本地 codex_hooks 开关
+codexsaver superpower install --profile full --workspace .
+```
+
+配置建议：
+
+- `basic`：最稳妥，只做项目级 AGENTS 引导
+- `full`：AGENTS 引导 + 可选 hook scaffolding + 本地 `.codex/config.toml` feature flag
+
+目标是尽量不去悄悄修改用户的全局配置，只在项目范围内把 Codex 更稳定地引导到 CodexSaver。
+
+---
+
+## 测试报告
+
+CodexSaver 现在有两条 benchmark 叙事，而且两条都很重要：
+
+### v2：成熟的单任务执行通道
+
+参考：
+
+- [v2 基准测试，2026-05-12](./docs/benchmarks/v2-benchmark-2026-05-12.md)
+
+结论：
+
+- `5 / 5` bounded task 成功
+- 成功任务稳定落在 `45%` 预计节省
+- 有一个“任务已满足”案例走了 `preflight`，达到 `100%` 节省，耗时 `0.03s`
+
+这是当前最成熟、最适合直接推广的能力带：
+
+- bounded docs
+- bounded tests
+- 小范围单目标实现
+
+### v3：真实项目上的 specialist 编排
+
+参考：
+
+- [v3 项目基准测试，2026-05-15](./docs/benchmarks/v3-project-benchmark-2026-05-15.md)
+
+结论：
+
+- `5` 个项目级典型任务里，`2 / 5` 成功
+- 成功的两个任务都落在 CodexSaver 当前最强的能力带
+- 最有代表性的成功是 `readonly_swarm`
+- 更偏 patch 的编排路径还在保守回退
+
+总结表：
+
+| 通道 | 当前最强场景 | 成熟度 |
+|---|---|---|
+| v2 | 单个 bounded patch 任务 | 成熟 |
+| v3 只读通道 | explain + scan + perf hint specialist | 已成立 |
+| v3 patch 编排 | docs/tests/impl 混合图 | 有潜力但仍在成熟 |
+
+如果今天要判断该怎么用 CodexSaver，最准确的心智模型是：
+
+- 需要稳定 bounded implementation，就优先用 v2
+- 需要让 Codex 低成本编排只读 specialist，就优先用 v3
+- 多 patch 的 v3 graph 还应该被视作前沿能力，而不是已经完全解决的问题
 
 ---
 
@@ -502,6 +773,8 @@ codexsaver install --project
 codexsaver doctor --workspace .
 codexsaver delegate "Explain the routing logic briefly" --files codexsaver/router.py --workspace .
 codexsaver work-packet "Create docs/example.md with one sentence." --files README.md --allowed-file docs/example.md --workspace .
+codexsaver orchestrate "Explain config loader logic and review performance" --files codexsaver/config.py
+codexsaver specialist explainer "Explain this module" --files codexsaver/config.py
 ```
 
 ---
@@ -518,8 +791,11 @@ codexsaver work-packet "Create docs/example.md with one sentence." --files READM
 - [x] 端到端验证流程
 - [x] v2 bounded work packet 和沙箱 patch 验证
 - [x] v2 已满足任务的 preflight
-- [ ] 成本感知动态路由
-- [ ] 成本感知 provider 选择
+- [x] v3 只读 specialist 编排
+- [x] v3 通过 v2 sandbox runtime 执行 bounded patch 节点
+- [x] v3 对重叠 patch 输出回退 Codex
+- [ ] v3 节点级文件所有权约束
+- [ ] v3 持久 ledger 与自适应路由
 
 ---
 

@@ -1,0 +1,79 @@
+[
+  {
+    "name": "Readonly explain and perf review",
+    "kind": "readonly_swarm",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is a normalized baseline and was not executed separately."
+    },
+    "codexsaver_v3": {
+      "route": "codex",
+      "status": "needs_codex",
+      "cost_index": 1.0,
+      "estimated_savings_percent": 0,
+      "latency_seconds": 3.71,
+      "node_count": 2,
+      "readonly_nodes": 0,
+      "patch_nodes": 0,
+      "worker_calls": 2,
+      "summary": "One or more readonly specialists failed; Codex should take over.",
+      "verification": null,
+      "changed_files": []
+    }
+  },
+  {
+    "name": "Implement login and add tests",
+    "kind": "impl_plus_tests",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is a normalized baseline and was not executed separately."
+    },
+    "codexsaver_v3": {
+      "route": "codex",
+      "status": "needs_codex",
+      "cost_index": 1.0,
+      "estimated_savings_percent": 0,
+      "latency_seconds": 10.75,
+      "node_count": 2,
+      "readonly_nodes": 0,
+      "patch_nodes": 0,
+      "worker_calls": 1,
+      "summary": "One or more patch specialists failed verification.",
+      "verification": null,
+      "changed_files": []
+    }
+  },
+  {
+    "name": "Implement parser, add docs, and explain risk",
+    "kind": "impl_docs_explain",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is a normalized baseline and was not executed separately."
+    },
+    "codexsaver_v3": {
+      "route": "deepseek",
+      "status": "success",
+      "cost_index": 0.42,
+      "estimated_savings_percent": 58,
+      "latency_seconds": 16.21,
+      "node_count": 3,
+      "readonly_nodes": 1,
+      "patch_nodes": 2,
+      "worker_calls": 3,
+      "summary": "v3 graph executed successfully.",
+      "verification": {
+        "ok": true,
+        "fallback_to_codex": false,
+        "reason": "All v3 nodes completed and aggregated successfully.",
+        "warnings": [],
+        "executed_commands": []
+      },
+      "changed_files": [
+        "src/v3_config.py"
+      ]
+    }
+  }
+]

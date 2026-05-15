@@ -8,14 +8,14 @@ from pathlib import Path
 
 from codexsaver.engine import CodexSaverEngine
 from codexsaver.config import PROVIDER_PRESETS, normalize_provider, save_provider_config
-from codexsaver.installer import doctor, install_config, install_global_config
+from codexsaver.installer import doctor, install_config, install_global_config, install_superpower_profile
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = argv or sys.argv[1:]
     if not argv or argv[0] in {"-h", "--help"}:
         return _run_subcommand(["--help"])
-    if argv and argv[0] in {"install", "doctor", "delegate", "work-packet", "auth"}:
+    if argv and argv[0] in {"install", "doctor", "delegate", "work-packet", "orchestrate", "specialist", "superpower", "auth"}:
         return _run_subcommand(argv)
     return _run_delegate(argv)
 
@@ -110,6 +110,46 @@ def _run_subcommand(argv: list[str]) -> int:
     work_packet_parser.add_argument("--max-diff-lines", type=int, default=300)
     work_packet_parser.add_argument("--dry-run", action="store_true")
 
+    orchestrate_parser = subparsers.add_parser(
+        "orchestrate",
+        help="Preview or plan a v3 multi-worker orchestration graph.",
+    )
+    orchestrate_parser.add_argument("goal")
+    orchestrate_parser.add_argument("--files", nargs="*", default=[])
+    orchestrate_parser.add_argument("--constraint", action="append", default=[])
+    orchestrate_parser.add_argument("--workspace", default=".")
+    orchestrate_parser.add_argument("--max-parallel-workers", type=int, default=4)
+    orchestrate_parser.add_argument("--dry-run", action="store_true")
+
+    specialist_parser = subparsers.add_parser(
+        "specialist",
+        help="Preview a single v3 specialist node.",
+    )
+    specialist_parser.add_argument("specialist")
+    specialist_parser.add_argument("goal")
+    specialist_parser.add_argument("--files", nargs="*", default=[])
+    specialist_parser.add_argument("--allowed-file", action="append", default=[])
+    specialist_parser.add_argument("--forbidden-path", action="append", default=[])
+    specialist_parser.add_argument("--acceptance", action="append", default=[])
+    specialist_parser.add_argument("--allowed-command", action="append", default=[])
+    specialist_parser.add_argument("--workspace", default=".")
+    specialist_parser.add_argument("--dry-run", action="store_true")
+
+    superpower_parser = subparsers.add_parser(
+        "superpower",
+        help="Install optional project guidance such as AGENTS.md and hook scaffolding.",
+    )
+    superpower_subparsers = superpower_parser.add_subparsers(dest="superpower_command", required=True)
+    superpower_install = superpower_subparsers.add_parser(
+        "install",
+        help="Install a basic or full CodexSaver project guidance profile.",
+    )
+    superpower_install.add_argument("--workspace", default=".")
+    superpower_install.add_argument("--profile", choices=["basic", "full"], default="basic")
+    superpower_install.add_argument("--with-agents", action="store_true")
+    superpower_install.add_argument("--with-hooks", action="store_true")
+    superpower_install.add_argument("--with-project-config", action="store_true")
+
     args = parser.parse_args(argv)
 
     if args.command == "install":
@@ -186,6 +226,20 @@ def _run_subcommand(argv: list[str]) -> int:
         }, ensure_ascii=False, indent=2))
         return 0
 
+    if args.command == "superpower":
+        apply_agents = args.with_agents or None
+        apply_hooks = args.with_hooks or None
+        apply_project_config = args.with_project_config or None
+        result = install_superpower_profile(
+            workspace=args.workspace,
+            profile=args.profile,
+            apply_agents=apply_agents,
+            apply_hooks=apply_hooks,
+            apply_project_config=apply_project_config,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
     if args.command == "work-packet":
         result = CodexSaverEngine().delegate_work_packet({
             "goal": args.goal,
@@ -199,6 +253,33 @@ def _run_subcommand(argv: list[str]) -> int:
             "delegation_level": args.delegation_level,
             "max_iterations": args.max_iterations,
             "max_diff_lines": args.max_diff_lines,
+            "dry_run": args.dry_run,
+        })
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "orchestrate":
+        result = CodexSaverEngine().orchestrate_task({
+            "goal": args.goal,
+            "files": args.files,
+            "constraints": args.constraint,
+            "workspace": args.workspace,
+            "max_parallel_workers": args.max_parallel_workers,
+            "dry_run": args.dry_run,
+        })
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "specialist":
+        result = CodexSaverEngine().run_specialist({
+            "specialist": args.specialist,
+            "goal": args.goal,
+            "files": args.files,
+            "allowed_files": args.allowed_file,
+            "forbidden_paths": args.forbidden_path,
+            "acceptance_criteria": args.acceptance,
+            "allowed_commands": args.allowed_command,
+            "workspace": args.workspace,
             "dry_run": args.dry_run,
         })
         print(json.dumps(result, ensure_ascii=False, indent=2))

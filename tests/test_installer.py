@@ -9,6 +9,7 @@ from codexsaver.installer import (
     doctor,
     install_config,
     install_global_config,
+    install_superpower_profile,
     render_mcp_config,
     write_global_launcher,
 )
@@ -158,6 +159,60 @@ def test_cli_auth_providers_lists_presets(capsys):
     assert output["providers"]["ollama"]["requires_api_key"] is False
     assert "openai" in output["providers"]
     assert "gemini" in output["providers"]
+
+
+def test_install_superpower_basic_creates_agents_only(tmp_path):
+    result = install_superpower_profile(str(tmp_path), profile="basic")
+    agents = tmp_path / "AGENTS.md"
+    hooks = tmp_path / ".codex" / "hooks.json"
+    project_config = tmp_path / ".codex" / "config.toml"
+    assert result["status"] == "ok"
+    assert agents.exists()
+    text = agents.read_text(encoding="utf-8")
+    assert "CODEXSAVER:BEGIN" in text
+    assert "Prefer `codexsaver.orchestrate_task`" in text
+    assert not hooks.exists()
+    assert not project_config.exists()
+
+
+def test_install_superpower_full_creates_hooks_and_project_config(tmp_path):
+    result = install_superpower_profile(str(tmp_path), profile="full")
+    agents = tmp_path / "AGENTS.md"
+    hook_script = tmp_path / ".codex" / "hooks" / "codexsaver_prompt_guard.py"
+    hooks_json = tmp_path / ".codex" / "hooks.json"
+    project_config = tmp_path / ".codex" / "config.toml"
+    assert result["status"] == "ok"
+    assert agents.exists()
+    assert hook_script.exists()
+    assert hooks_json.exists()
+    assert project_config.exists()
+    hooks = json.loads(hooks_json.read_text(encoding="utf-8"))
+    assert "UserPromptSubmit" in hooks["hooks"]
+    config_text = project_config.read_text(encoding="utf-8")
+    assert "codex_hooks = true" in config_text
+
+
+def test_install_superpower_updates_existing_agents_block_only(tmp_path):
+    agents = tmp_path / "AGENTS.md"
+    agents.write_text(
+        "# Existing Rules\n\nKeep this.\n\n<!-- CODEXSAVER:BEGIN -->\nold\n<!-- CODEXSAVER:END -->\n",
+        encoding="utf-8",
+    )
+    install_superpower_profile(str(tmp_path), profile="basic")
+    text = agents.read_text(encoding="utf-8")
+    assert "# Existing Rules" in text
+    assert "Keep this." in text
+    assert "Prefer `codexsaver.orchestrate_task`" in text
+    assert "old" not in text
+
+
+def test_cli_superpower_install_basic(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    assert main(["superpower", "install", "--workspace", str(tmp_path), "--profile", "basic"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "ok"
+    assert output["profile"] == "basic"
+    assert (tmp_path / "AGENTS.md").exists()
 
 
 class monkeypatch_context_global_launcher:

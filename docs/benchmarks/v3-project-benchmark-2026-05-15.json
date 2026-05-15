@@ -1,0 +1,153 @@
+[
+  {
+    "name": "Explain installer flow and review performance",
+    "kind": "readonly_swarm",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is a normalized baseline and was not executed separately."
+    },
+    "codexsaver_v3": {
+      "route": "deepseek",
+      "status": "success",
+      "summary": "v3 graph executed successfully.",
+      "cost_index": 0.48,
+      "estimated_savings_percent": 52,
+      "latency_seconds": 6.45,
+      "node_count": 2,
+      "readonly_nodes": 2,
+      "patch_nodes": 0,
+      "worker_calls": 2,
+      "changed_files": [],
+      "readonly_findings": 10,
+      "quality_score": 0.75,
+      "quality_notes": [
+        "verification passed",
+        "10 readonly findings"
+      ],
+      "verification": {
+        "ok": true,
+        "fallback_to_codex": false,
+        "reason": "All v3 nodes completed and aggregated successfully.",
+        "warnings": [],
+        "executed_commands": []
+      }
+    }
+  },
+  {
+    "name": "Document installer profile flow and explain risk",
+    "kind": "docs_plus_explain",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is a normalized baseline and was not executed separately."
+    },
+    "codexsaver_v3": {
+      "route": "deepseek",
+      "status": "success",
+      "summary": "v3 graph executed successfully.",
+      "cost_index": 0.48,
+      "estimated_savings_percent": 52,
+      "latency_seconds": 42.51,
+      "node_count": 2,
+      "readonly_nodes": 1,
+      "patch_nodes": 1,
+      "worker_calls": 2,
+      "changed_files": [
+        "codexsaver/installer.py"
+      ],
+      "readonly_findings": 4,
+      "quality_score": 0.9,
+      "quality_notes": [
+        "verification passed",
+        "4 readonly findings",
+        "1 changed files"
+      ],
+      "verification": {
+        "ok": true,
+        "fallback_to_codex": false,
+        "reason": "All v3 nodes completed and aggregated successfully.",
+        "warnings": [],
+        "executed_commands": []
+      }
+    }
+  },
+  {
+    "name": "Generate tests for installer profile behavior",
+    "kind": "tests_only",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is a normalized baseline and was not executed separately."
+    },
+    "codexsaver_v3": {
+      "route": "codex",
+      "status": "needs_codex",
+      "summary": "Patch aggregation could not be materialized safely: Failed to apply node patch to aggregate workspace: test_writer",
+      "cost_index": 1.0,
+      "estimated_savings_percent": 0,
+      "latency_seconds": 0.71,
+      "node_count": 1,
+      "readonly_nodes": 0,
+      "patch_nodes": 0,
+      "worker_calls": 1,
+      "changed_files": [],
+      "readonly_findings": 0,
+      "quality_score": 0.0,
+      "quality_notes": [],
+      "verification": null
+    }
+  },
+  {
+    "name": "Implement ledger helper, add docs, and explain risk",
+    "kind": "impl_docs_explain",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is a normalized baseline and was not executed separately."
+    },
+    "codexsaver_v3": {
+      "route": "codex",
+      "status": "needs_codex",
+      "summary": "One or more patch specialists failed verification.",
+      "cost_index": 1.0,
+      "estimated_savings_percent": 0,
+      "latency_seconds": 5.02,
+      "node_count": 3,
+      "readonly_nodes": 0,
+      "patch_nodes": 0,
+      "worker_calls": 1,
+      "changed_files": [],
+      "readonly_findings": 0,
+      "quality_score": 0.0,
+      "quality_notes": [],
+      "verification": null
+    }
+  },
+  {
+    "name": "Implement ledger normalization and add tests",
+    "kind": "impl_plus_tests",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is a normalized baseline and was not executed separately."
+    },
+    "codexsaver_v3": {
+      "route": "codex",
+      "status": "needs_codex",
+      "summary": "One or more patch specialists failed verification.",
+      "cost_index": 1.0,
+      "estimated_savings_percent": 0,
+      "latency_seconds": 22.26,
+      "node_count": 2,
+      "readonly_nodes": 0,
+      "patch_nodes": 0,
+      "worker_calls": 2,
+      "changed_files": [],
+      "readonly_findings": 0,
+      "quality_score": 0.0,
+      "quality_notes": [],
+      "verification": null
+    }
+  }
+]

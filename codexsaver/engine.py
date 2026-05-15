@@ -9,6 +9,7 @@ from .config import resolve_provider_config
 from .provider import ProviderClient, ProviderError
 from .router import PROTECTED_PATH_KEYWORDS, Router
 from .schema import DelegateTaskInput, WorkPacketInput, WorkerTask, to_dict
+from .orchestrator import V3Orchestrator
 from .verifier import Verifier
 from .work_packet import WorkPacketRuntime
 
@@ -26,6 +27,7 @@ class CodexSaverEngine:
         self.router = Router()
         self.verifier = Verifier()
         self.cost = CostEstimator()
+        self.orchestrator = V3Orchestrator()
 
     def delegate_task(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         provider = resolve_provider_config()
@@ -294,6 +296,12 @@ class CodexSaverEngine:
             detail=worker_result["verification"]["reason"],
         )
         return worker_result
+
+    def orchestrate_task(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        return self.orchestrator.orchestrate(input_data)
+
+    def run_specialist(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        return self.orchestrator.run_specialist(input_data)
 
 
 DEFAULT_FORBIDDEN_PATHS = [

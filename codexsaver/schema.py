@@ -17,6 +17,8 @@ TaskType = Literal[
     "unknown",
 ]
 DelegationLevel = Literal["research", "draft_patch", "bounded_impl", "repair_loop"]
+OrchestratorRoute = Literal["codex_only", "single_worker", "multi_worker", "readonly_swarm"]
+SpecialistMode = Literal["readonly", "bounded_patch", "repair_loop"]
 
 
 @dataclass
@@ -99,6 +101,70 @@ class VerificationResult:
     reason: str
     warnings: List[str]
     executed_commands: List[Dict[str, Any]]
+
+
+@dataclass
+class SpecialistProfile:
+    name: str
+    provider: str
+    model: str
+    mode: SpecialistMode
+    prompt_file: str
+    description: str
+
+
+@dataclass
+class WorkGraphNode:
+    id: str
+    type: str
+    goal: str
+    depends_on: List[str]
+    specialist: str
+    allowed_files: List[str]
+    forbidden_paths: List[str]
+    allowed_commands: List[str]
+    acceptance_criteria: List[str]
+    mode: SpecialistMode
+
+
+@dataclass
+class WorkGraph:
+    graph_id: str
+    route: OrchestratorRoute
+    summary: str
+    nodes: List[WorkGraphNode]
+
+
+@dataclass
+class OrchestrateTaskInput:
+    goal: str
+    files: List[str]
+    constraints: List[str]
+    workspace: str = "."
+    max_parallel_workers: int = 4
+    dry_run: bool = False
+
+
+@dataclass
+class SpecialistRunInput:
+    specialist: str
+    goal: str
+    files: List[str]
+    allowed_files: List[str]
+    forbidden_paths: List[str]
+    acceptance_criteria: List[str]
+    allowed_commands: List[str]
+    workspace: str = "."
+    dry_run: bool = False
+
+
+@dataclass
+class AggregationResult:
+    ok: bool
+    aggregate_patch: str
+    changed_files: List[str]
+    conflicts: List[str]
+    codex_review_notes: List[str]
 
 
 def to_dict(obj: Any) -> Dict[str, Any]:
