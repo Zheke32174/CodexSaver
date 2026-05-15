@@ -90,6 +90,18 @@ def test_anthropic_preset_uses_native_messages_api(monkeypatch, tmp_path):
     assert provider.api_key == "sk-ant"
 
 
+def test_opencode_go_preset_uses_openai_compatible_endpoint(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODEXSAVER_PROVIDER", "opencode-go")
+    monkeypatch.setenv("OPENCODE_GO_API_KEY", "sk-go")
+    monkeypatch.setattr("codexsaver.config.CONFIG_PATH", tmp_path / "missing.json")
+    provider = resolve_provider_config()
+    assert provider.name == "opencode-go"
+    assert provider.api_style == "openai"
+    assert provider.base_url == "https://opencode.ai/zen/go/v1/chat/completions"
+    assert provider.model == "deepseek-v4-flash"
+    assert provider.api_key == "sk-go"
+
+
 def test_local_provider_can_skip_api_key(monkeypatch, tmp_path):
     monkeypatch.setenv("CODEXSAVER_PROVIDER", "ollama")
     monkeypatch.setattr("codexsaver.config.CONFIG_PATH", tmp_path / "missing.json")

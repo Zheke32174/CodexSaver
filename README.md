@@ -423,7 +423,13 @@ codexsaver auth set --provider openai --api-key YOUR_API_KEY --model gpt-4o-mini
 codexsaver auth set --provider anthropic --api-key YOUR_API_KEY --model claude-3-5-haiku-latest
 codexsaver auth set --provider gemini --api-key YOUR_API_KEY --model gemini-2.0-flash
 codexsaver auth set --provider qwen --api-key YOUR_API_KEY --model qwen-plus
+codexsaver auth set --provider opencode-go --api-key YOUR_API_KEY --model deepseek-v4-flash
 ```
+
+OpenCode Go uses `https://opencode.ai/zen/go/v1/chat/completions` and is useful
+when you want CodexSaver's worker lane to run through its low-cost DeepSeek V4
+Flash or Pro models. The default preset uses `deepseek-v4-flash`; switch to
+`deepseek-v4-pro` if you want the stronger Go model.
 
 For local models:
 
@@ -580,6 +586,7 @@ Built-in presets cover the common hosted and local routes:
 | `deepseek` | OpenAI-compatible | `deepseek-chat` | required |
 | `openai` | OpenAI | `gpt-4o-mini` | required |
 | `anthropic` | native Messages API | `claude-3-5-haiku-latest` | required |
+| `opencode-go` | OpenAI-compatible | `deepseek-v4-flash` | required |
 | `gemini` | OpenAI-compatible endpoint | `gemini-2.0-flash` | required |
 | `qwen` | OpenAI-compatible endpoint | `qwen-plus` | required |
 | `ollama` | local OpenAI-compatible endpoint | `llama3.1` | not required |

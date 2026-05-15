@@ -68,6 +68,12 @@ PROVIDER_PRESETS: Dict[str, ProviderPreset] = {
         model="deepseek/deepseek-chat-v3-0324:free",
         env_keys=("OPENROUTER_API_KEY",),
     ),
+    "opencode-go": ProviderPreset(
+        name="opencode-go",
+        base_url="https://opencode.ai/zen/go/v1/chat/completions",
+        model="deepseek-v4-flash",
+        env_keys=("OPENCODE_GO_API_KEY", "OPENCODE_API_KEY"),
+    ),
     "gemini": ProviderPreset(
         name="gemini",
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",

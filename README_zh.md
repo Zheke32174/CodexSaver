@@ -417,7 +417,12 @@ codexsaver auth set --provider openai --api-key YOUR_API_KEY --model gpt-4o-mini
 codexsaver auth set --provider anthropic --api-key YOUR_API_KEY --model claude-3-5-haiku-latest
 codexsaver auth set --provider gemini --api-key YOUR_API_KEY --model gemini-2.0-flash
 codexsaver auth set --provider qwen --api-key YOUR_API_KEY --model qwen-plus
+codexsaver auth set --provider opencode-go --api-key YOUR_API_KEY --model deepseek-v4-flash
 ```
+
+OpenCode Go 使用 `https://opencode.ai/zen/go/v1/chat/completions`，适合把
+CodexSaver 的 worker 通道接到低成本 DeepSeek V4 Flash / Pro 模型上。默认预设使用
+`deepseek-v4-flash`；如果想要更强的 Go 模型，可以切到 `deepseek-v4-pro`。
 
 本地模型：
 
@@ -572,6 +577,7 @@ codexsaver delegate "添加单元测试" --files src/user/service.ts --workspace
 | `deepseek` | OpenAI-compatible | `deepseek-chat` | 需要 |
 | `openai` | OpenAI | `gpt-4o-mini` | 需要 |
 | `anthropic` | native Messages API | `claude-3-5-haiku-latest` | 需要 |
+| `opencode-go` | OpenAI-compatible | `deepseek-v4-flash` | 需要 |
 | `gemini` | OpenAI-compatible endpoint | `gemini-2.0-flash` | 需要 |
 | `qwen` | OpenAI-compatible endpoint | `qwen-plus` | 需要 |
 | `ollama` | 本地 OpenAI-compatible endpoint | `llama3.1` | 不需要 |
