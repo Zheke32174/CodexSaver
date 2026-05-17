@@ -1,0 +1,466 @@
+{
+  "summary": {
+    "tasks": 6,
+    "successes": 2,
+    "average_deepseek_participation_percent": 55.7,
+    "tasks_at_or_above_50_percent": 5,
+    "average_latency_seconds": 24.82,
+    "average_quality_score": 0.39,
+    "average_cost_index": 0.83
+  },
+  "results": [
+    {
+      "name": "Readonly route and performance triage",
+      "kind": "readonly_swarm",
+      "codex_only": {
+        "cost_index": 1.0,
+        "participation_percent": 0,
+        "effect": "counterfactual_baseline"
+      },
+      "codexsaver_v34": {
+        "route": "deepseek",
+        "status": "success",
+        "summary": "v3 graph executed successfully.",
+        "cost_index": 0.48,
+        "estimated_savings_percent": 52,
+        "latency_seconds": 6.12,
+        "node_count": 2,
+        "readonly_nodes": 2,
+        "patch_nodes": 0,
+        "worker_calls": 2,
+        "deepseek_participation_percent": 100,
+        "changed_files": [],
+        "readonly_findings": 14,
+        "quality_score": 0.75,
+        "verification": {
+          "ok": true,
+          "fallback_to_codex": false,
+          "reason": "All v3 nodes completed and aggregated successfully.",
+          "warnings": [],
+          "executed_commands": []
+        },
+        "blocked_actions": [],
+        "codex_next_actions": [],
+        "partial_delegation": false,
+        "handoff": {
+          "status": "success",
+          "summary": "All worker nodes completed. Codex should review and apply if safe.",
+          "delegated_work_done": [
+            {
+              "node_id": "explain-1",
+              "specialist": "explainer",
+              "status": "success",
+              "summary": "WorkGraphPlanner builds a directed acyclic graph of worker nodes from an OrchestrateTaskInput, using keyword detection to decide which specialists (impl, test, doc, explain, perf) to include, and routing the graph accordingly.",
+              "changed_files": [],
+              "findings": [
+                "Keyword matching uses substring checks (e.g., 'add ' with trailing space) which may cause false positives or misses.",
+                "Impl node is always created first; test, doc, explain, perf nodes depend on impl_id if impl_needed is true, creating a linear dependency chain.",
+                "When worker_allowed is false, only safe prep nodes (inspect + optional dry-run validation) are created, and the graph is marked as readonly_swarm or multi_worker.",
+                "Test file guessing is simplistic (e.g., 'tests/test_<filename>.py') and may not match actual project structure.",
+                "Test command guessing returns only the first command, which may be insufficient for multi-file test suites.",
+                "Route selection logic: if all nodes are readonly → readonly_swarm; single node → single_worker; else multi_worker."
+              ],
+              "risk_notes": [
+                "Performance risk: keyword scanning on every request is O(n) but negligible; the main risk is unnecessary node creation when keywords overlap (e.g., 'update' triggers impl even for doc-only tasks).",
+                "Dependency chain: all non-impl nodes wait for impl_id, which serializes execution even when tasks could run in parallel (e.g., docs and tests).",
+                "False negatives: if a goal uses synonyms not in the keyword lists, no nodes are created and a fallback explain node is added, which may not match user intent.",
+                "Scalability: large file lists passed to allowed_files are copied into every node, increasing memory and serialization cost.",
+                "Dry-run validation node for database/schema risk domains creates a file in docs/ which may not exist, causing write failures if the directory is missing."
+              ]
+            },
+            {
+              "node_id": "perf-2",
+              "specialist": "perf_reviewer",
+              "status": "success",
+              "summary": "WorkGraphPlanner builds a DAG of specialist nodes with keyword-based intent detection and policy-driven routing.",
+              "changed_files": [],
+              "findings": [
+                "Keyword matching on lowercased goal is O(n*m) per call but acceptable for typical goal lengths.",
+                "Each plan() call creates a new WorkGraph and nodes; no caching or reuse of graph structure.",
+                "SpecialistRegistry lookup per node is a dictionary get, negligible cost.",
+                "Node dependency chains (depends_on) are simple string lists; no cycle detection or topological sort overhead.",
+                "Route decision is O(n) over nodes, fine for small node counts.",
+                "No I/O, network, or heavy computation in planning path.",
+                "Safe prep path adds at most 2 nodes; main path adds up to 5 nodes.",
+                "No memory leaks or unbounded growth; graph is ephemeral per request."
+              ],
+              "risk_notes": [
+                "Low performance risk; planning is CPU-light and stateless.",
+                "If goal strings become very long (e.g., >10KB), keyword scanning could become a minor bottleneck.",
+                "No risk of excessive memory or latency under normal usage."
+              ]
+            }
+          ],
+          "commands_to_run": [],
+          "blocked_actions": [],
+          "codex_next_actions": [
+            "Review delegated evidence.",
+            "Run verification commands where appropriate.",
+            "Keep high-risk execution in Codex."
+          ]
+        }
+      }
+    },
+    {
+      "name": "Safe database import workflow planning",
+      "kind": "safe_data_workflow",
+      "codex_only": {
+        "cost_index": 1.0,
+        "participation_percent": 0,
+        "effect": "counterfactual_baseline"
+      },
+      "codexsaver_v34": {
+        "route": "deepseek",
+        "status": "success",
+        "summary": "v3 graph executed successfully.",
+        "cost_index": 0.48,
+        "estimated_savings_percent": 52,
+        "latency_seconds": 30.54,
+        "node_count": 2,
+        "readonly_nodes": 1,
+        "patch_nodes": 1,
+        "worker_calls": 2,
+        "deepseek_participation_percent": 67,
+        "changed_files": [
+          "docs/codexsaver-dry-run-work_packet.md"
+        ],
+        "readonly_findings": 6,
+        "quality_score": 0.9,
+        "verification": {
+          "ok": true,
+          "fallback_to_codex": false,
+          "reason": "All v3 nodes completed and aggregated successfully.",
+          "warnings": [],
+          "executed_commands": []
+        },
+        "blocked_actions": [
+          "Database writes, migrations, deletes, or rebuilds require Codex/user approval."
+        ],
+        "codex_next_actions": [
+          "Use workers for inspection, draft scripts, validation SQL, and dry-run plans only."
+        ],
+        "partial_delegation": false,
+        "handoff": {
+          "status": "success",
+          "summary": "All worker nodes completed. Codex should review and apply if safe.",
+          "delegated_work_done": [
+            {
+              "node_id": "inspect-4",
+              "specialist": "explainer",
+              "status": "success",
+              "summary": "work_packet.py implements a sandboxed worker loop for applying patches (unified diffs) to a temporary copy of the workspace. It supports two modes: a general action loop (search_code, open_file, list_files, propose_patch, run_check, finish, escalate) and a patch-only loop (draft_patch, bounded_impl, repair_loop). The PatchSandbox class copies the workspace to a tempdir, applies the patch via git apply, runs allowed shell commands, and verifies policy (allowed_files, forbidden_paths, max_diff_lines, secret detection). Final output is a JSON result dict with route, status, patch, verification, and transcript.",
+              "changed_files": [],
+              "findings": [
+                "Schema/data flow: WorkPacketInput -> ContextPacker.load() -> worker prompt -> action/patch -> PatchSandbox -> verification -> result dict.",
+                "Existing scripts: No database schema or OCR text import logic present. The file is purely a patch execution sandbox.",
+                "Risk: PatchSandbox copies entire workspace to tempdir each iteration; large workspaces may cause disk/performance issues.",
+                "Risk: Shell commands run with shell=True and timeout=120; no explicit resource limits beyond timeout.",
+                "Risk: Secret regex (SECRET_RE) may produce false positives, blocking legitimate patches.",
+                "Risk: Protected path keywords (PROTECTED_PATH_KEYWORDS) block patches touching certain paths; no database or OCR references exist."
+              ],
+              "risk_notes": [
+                "No database schema or OCR text import code exists in this file. Any rebuild would require new files or modifications elsewhere.",
+                "The sandbox copies the entire workspace; for large repos, consider excluding more directories or using symlinks.",
+                "Shell commands are run with shell=True; ensure allowed_commands are tightly scoped to avoid injection.",
+                "The secret regex is broad; review if it matches legitimate API keys or tokens in your codebase."
+              ]
+            },
+            {
+              "node_id": "validation-5",
+              "specialist": "doc_writer",
+              "status": "success",
+              "summary": "Create dry-run validation documentation for rebuilding database schema and importing OCR text into lessons, with safe preparation only and no writes executed.",
+              "changed_files": [
+                "docs/codexsaver-dry-run-work_packet.md"
+              ],
+              "findings": [],
+              "risk_notes": [
+                "Documentation only — no runtime behavior changed.",
+                "All write paths are commented out and require --apply flag.",
+                "No database writes are executed in this dry-run."
+              ]
+            }
+          ],
+          "commands_to_run": [],
+          "blocked_actions": [
+            "Database writes, migrations, deletes, or rebuilds require Codex/user approval."
+          ],
+          "codex_next_actions": [
+            "Use workers for inspection, draft scripts, validation SQL, and dry-run plans only."
+          ]
+        }
+      }
+    },
+    {
+      "name": "Policy docs plus risk explanation",
+      "kind": "docs_plus_explain",
+      "codex_only": {
+        "cost_index": 1.0,
+        "participation_percent": 0,
+        "effect": "counterfactual_baseline"
+      },
+      "codexsaver_v34": {
+        "route": "codex",
+        "status": "needs_codex",
+        "summary": "One or more patch specialists failed verification.",
+        "cost_index": 1.0,
+        "estimated_savings_percent": 0,
+        "latency_seconds": 33.38,
+        "node_count": 2,
+        "readonly_nodes": 0,
+        "patch_nodes": 0,
+        "worker_calls": 2,
+        "deepseek_participation_percent": 50,
+        "changed_files": [],
+        "readonly_findings": 5,
+        "quality_score": 0.3,
+        "verification": null,
+        "blocked_actions": [],
+        "codex_next_actions": [],
+        "partial_delegation": true,
+        "handoff": {
+          "status": "partial",
+          "summary": "One or more patch specialists failed verification.",
+          "delegated_work_done": [
+            {
+              "node_id": "explain-8",
+              "specialist": "explainer",
+              "status": "success",
+              "summary": "The file implements a delegation policy that classifies tasks by risk domain and action type, then decides whether a worker can execute or if Codex must retain control.",
+              "changed_files": [],
+              "findings": [
+                "DelegationPolicy dataclass holds action_type, risk_domain, worker_allowed, execution_policy, blocked_actions, codex_next_actions, and reason.",
+                "classify_delegation_policy() uses keyword matching to determine risk domain and action type from the goal and file list.",
+                "High-risk domains (auth, payment, infra, secrets) with non-readonly actions block worker delegation and require Codex-only execution.",
+                "Database/schema writes or destructive actions are blocked from workers; dry-run or script generation is allowed but with dry_run_only policy.",
+                "Generic write/destructive actions (without a high-risk domain) also force Codex-only execution."
+              ],
+              "risk_notes": [
+                "Keyword matching is fragile: misspellings or synonyms can misclassify a task, potentially allowing unsafe delegation or blocking safe tasks.",
+                "The policy does not consider user identity, session context, or explicit approval workflows; it relies solely on text analysis.",
+                "No audit trail or override mechanism is visible; a misclassification could lead to unintended worker execution of destructive operations.",
+                "The _has() function uses simple substring matching, which can trigger false positives (e.g., 'delete' in 'undelete')."
+              ]
+            },
+            {
+              "node_id": "docs-7",
+              "specialist": "doc_writer",
+              "status": "needs_codex",
+              "summary": "",
+              "changed_files": [],
+              "findings": [],
+              "risk_notes": []
+            }
+          ],
+          "commands_to_run": [],
+          "blocked_actions": [],
+          "codex_next_actions": [
+            "Review delegated evidence.",
+            "Run verification commands where appropriate.",
+            "Keep high-risk execution in Codex."
+          ]
+        }
+      }
+    },
+    {
+      "name": "Ledger participation tests",
+      "kind": "tests_only",
+      "codex_only": {
+        "cost_index": 1.0,
+        "participation_percent": 0,
+        "effect": "counterfactual_baseline"
+      },
+      "codexsaver_v34": {
+        "route": "codex",
+        "status": "needs_codex",
+        "summary": "One or more patch specialists failed verification.",
+        "cost_index": 1.0,
+        "estimated_savings_percent": 0,
+        "latency_seconds": 28.49,
+        "node_count": 2,
+        "readonly_nodes": 0,
+        "patch_nodes": 0,
+        "worker_calls": 2,
+        "deepseek_participation_percent": 50,
+        "changed_files": [],
+        "readonly_findings": 0,
+        "quality_score": 0.1,
+        "verification": null,
+        "blocked_actions": [],
+        "codex_next_actions": [],
+        "partial_delegation": true,
+        "handoff": {
+          "status": "partial",
+          "summary": "One or more patch specialists failed verification.",
+          "delegated_work_done": [
+            {
+              "node_id": "impl-10",
+              "specialist": "impl_worker",
+              "status": "success",
+              "summary": "Add focused tests for DeepSeek participation summary in CostLedger",
+              "changed_files": [
+                "codexsaver/ledger.py"
+              ],
+              "findings": [],
+              "risk_notes": [
+                "Added unittest import and test class at end of file; no existing test infrastructure was present.",
+                "Tests cover empty, zero, mixed, all-majority, and boundary cases for deepseek_participation_percent.",
+                "Patch stays within allowed file codexsaver/ledger.py."
+              ]
+            },
+            {
+              "node_id": "tests-11",
+              "specialist": "test_writer",
+              "status": "needs_codex",
+              "summary": "",
+              "changed_files": [],
+              "findings": [],
+              "risk_notes": []
+            }
+          ],
+          "commands_to_run": [],
+          "blocked_actions": [],
+          "codex_next_actions": [
+            "Review delegated evidence.",
+            "Run verification commands where appropriate.",
+            "Keep high-risk execution in Codex."
+          ]
+        }
+      }
+    },
+    {
+      "name": "Provider preset docs and verification notes",
+      "kind": "docs_plus_explain",
+      "codex_only": {
+        "cost_index": 1.0,
+        "participation_percent": 0,
+        "effect": "counterfactual_baseline"
+      },
+      "codexsaver_v34": {
+        "route": "codex",
+        "status": "needs_codex",
+        "summary": "One or more patch specialists failed verification.",
+        "cost_index": 1.0,
+        "estimated_savings_percent": 0,
+        "latency_seconds": 13.94,
+        "node_count": 3,
+        "readonly_nodes": 0,
+        "patch_nodes": 0,
+        "worker_calls": 3,
+        "deepseek_participation_percent": 67,
+        "changed_files": [],
+        "readonly_findings": 4,
+        "quality_score": 0.3,
+        "verification": null,
+        "blocked_actions": [],
+        "codex_next_actions": [],
+        "partial_delegation": true,
+        "handoff": {
+          "status": "partial",
+          "summary": "One or more patch specialists failed verification.",
+          "delegated_work_done": [
+            {
+              "node_id": "explain-15",
+              "specialist": "explainer",
+              "status": "success",
+              "summary": "README.md adds an OpenCode Go verification risk warning and updates provider preset documentation.",
+              "changed_files": [],
+              "findings": [
+                "Added prominent warning box about OpenCode Go being a community-maintained proxy, not an official endpoint.",
+                "Updated provider matrix to include opencode-go with default model deepseek-v4-flash.",
+                "Added opencode-go auth set example in provider setup section.",
+                "README documents that CodexSaver does not audit third-party proxy endpoints."
+              ],
+              "risk_notes": [
+                "OpenCode Go routes through DeepSeek V4 models via a third-party proxy; security, data residency, and reliability are not audited by CodexSaver.",
+                "Users must independently verify the proxy provider before using opencode-go in production.",
+                "The warning is prominently placed at the top of the README to ensure visibility."
+              ]
+            },
+            {
+              "node_id": "impl-13",
+              "specialist": "impl_worker",
+              "status": "success",
+              "summary": "Add OpenCode Go verification risk note to README.md",
+              "changed_files": [
+                "README.md"
+              ],
+              "findings": [],
+              "risk_notes": [
+                "Patch adds a security/verification warning for the opencode-go provider preset.",
+                "Only README.md is modified; no logic or config changes."
+              ]
+            },
+            {
+              "node_id": "docs-14",
+              "specialist": "doc_writer",
+              "status": "needs_codex",
+              "summary": "",
+              "changed_files": [],
+              "findings": [],
+              "risk_notes": []
+            }
+          ],
+          "commands_to_run": [],
+          "blocked_actions": [],
+          "codex_next_actions": [
+            "Review delegated evidence.",
+            "Run verification commands where appropriate.",
+            "Keep high-risk execution in Codex."
+          ]
+        }
+      }
+    },
+    {
+      "name": "Config helper implementation with tests",
+      "kind": "impl_plus_tests",
+      "codex_only": {
+        "cost_index": 1.0,
+        "participation_percent": 0,
+        "effect": "counterfactual_baseline"
+      },
+      "codexsaver_v34": {
+        "route": "codex",
+        "status": "needs_codex",
+        "summary": "One or more patch specialists failed verification.",
+        "cost_index": 1.0,
+        "estimated_savings_percent": 0,
+        "latency_seconds": 36.45,
+        "node_count": 2,
+        "readonly_nodes": 0,
+        "patch_nodes": 0,
+        "worker_calls": 1,
+        "deepseek_participation_percent": 0,
+        "changed_files": [],
+        "readonly_findings": 0,
+        "quality_score": 0.0,
+        "verification": null,
+        "blocked_actions": [],
+        "codex_next_actions": [],
+        "partial_delegation": false,
+        "handoff": {
+          "status": "needs_codex",
+          "summary": "One or more patch specialists failed verification.",
+          "delegated_work_done": [
+            {
+              "node_id": "impl-17",
+              "specialist": "impl_worker",
+              "status": "needs_codex",
+              "summary": "",
+              "changed_files": [],
+              "findings": [],
+              "risk_notes": []
+            }
+          ],
+          "commands_to_run": [],
+          "blocked_actions": [],
+          "codex_next_actions": [
+            "Review delegated evidence.",
+            "Run verification commands where appropriate.",
+            "Keep high-risk execution in Codex."
+          ]
+        }
+      }
+    }
+  ]
+}

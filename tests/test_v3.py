@@ -25,8 +25,8 @@ def test_specialist_registry_lists_defaults():
 def test_work_graph_planner_builds_multi_worker_graph():
     planner = WorkGraphPlanner()
     graph = planner.plan(type("Req", (), {
-        "goal": "Implement login, add tests, add docs, and explain risk",
-        "files": ["src/user_auth.py"],
+        "goal": "Implement config parser, add tests, add docs, and explain risk",
+        "files": ["src/config_parser.py"],
         "constraints": [],
         "workspace": ".",
         "max_parallel_workers": 4,
@@ -37,7 +37,7 @@ def test_work_graph_planner_builds_multi_worker_graph():
     assert any(node.specialist == "test_writer" for node in graph.nodes)
     assert any(node.specialist == "doc_writer" for node in graph.nodes)
     test_nodes = [node for node in graph.nodes if node.specialist == "test_writer"]
-    assert test_nodes[0].allowed_commands == ["python -m pytest tests/test_user_auth.py -q"]
+    assert test_nodes[0].allowed_commands == ["python -m pytest tests/test_config_parser.py -q"]
 
 
 def test_patch_aggregator_detects_conflicts():
@@ -51,8 +51,8 @@ def test_patch_aggregator_detects_conflicts():
 
 def test_engine_orchestrate_task_dry_run():
     result = CodexSaverEngine().orchestrate_task({
-        "goal": "Implement login, add tests, and add docs",
-        "files": ["src/user_auth.py"],
+        "goal": "Implement config parser, add tests, and add docs",
+        "files": ["src/config_parser.py"],
         "dry_run": True,
     })
     assert result["status"] == "dry_run"
@@ -111,7 +111,7 @@ def test_engine_orchestrate_task_executes_patch_nodes_and_aggregates():
             patch("codexsaver.orchestrator.V3Orchestrator._apply_results_to_workspace"), \
             patch("codexsaver.orchestrator.V3Orchestrator._build_final_aggregate_patch", return_value={
                 "patch": "aggregate",
-                "changed_files": ["src/user_auth.py", "tests/test_user_auth.py"],
+                "changed_files": ["src/config_parser.py", "tests/test_config_parser.py"],
                 "notes": [],
             }):
         runtime = MockRuntime.return_value
@@ -120,10 +120,10 @@ def test_engine_orchestrate_task_executes_patch_nodes_and_aggregates():
                 "route": "deepseek",
                 "status": "success",
                 "summary": "implemented login",
-                "changed_files": ["src/user_auth.py"],
+                "changed_files": ["src/config_parser.py"],
                 "patch": (
-                    "--- a/src/user_auth.py\n"
-                    "+++ b/src/user_auth.py\n"
+                    "--- a/src/config_parser.py\n"
+                    "+++ b/src/config_parser.py\n"
                     "@@ -1 +1,2 @@\n"
                     "-pass\n"
                     "+pass\n"
@@ -136,27 +136,27 @@ def test_engine_orchestrate_task_executes_patch_nodes_and_aggregates():
                 "route": "deepseek",
                 "status": "success",
                 "summary": "added tests",
-                "changed_files": ["tests/test_user_auth.py"],
+                "changed_files": ["tests/test_config_parser.py"],
                 "patch": (
-                    "--- a/tests/test_user_auth.py\n"
-                    "+++ b/tests/test_user_auth.py\n"
+                    "--- a/tests/test_config_parser.py\n"
+                    "+++ b/tests/test_config_parser.py\n"
                     "@@ -0,0 +1,1 @@\n"
                     "+def test_login(): pass\n"
                 ),
-                "checks": [{"command": "pytest tests/test_user_auth.py -q", "exit_code": 0}],
+                "checks": [{"command": "pytest tests/test_config_parser.py -q", "exit_code": 0}],
                 "risk_notes": [],
             },
         ]
         result = CodexSaverEngine().orchestrate_task({
-            "goal": "Implement login and add tests",
-            "files": ["src/user_auth.py"],
+            "goal": "Implement config parser and add tests",
+            "files": ["src/config_parser.py"],
             "workspace": ".",
         })
 
     assert result["status"] == "success"
     assert result["route"] == "deepseek"
-    assert "src/user_auth.py" in result["changed_files"]
-    assert "tests/test_user_auth.py" in result["changed_files"]
+    assert "src/config_parser.py" in result["changed_files"]
+    assert "tests/test_config_parser.py" in result["changed_files"]
     assert result["metrics"]["patch_nodes"] == 2
 
 
@@ -226,6 +226,62 @@ def test_engine_orchestrate_task_patch_conflict_returns_codex():
     assert result["route"] == "codex"
 
 
+def test_work_graph_planner_splits_database_write_into_safe_prep_nodes():
+    planner = WorkGraphPlanner()
+    graph = planner.plan(type("Req", (), {
+        "goal": "Rebuild database schema and write imported OCR text into lessons",
+        "files": ["scripts/import_textbooks.py"],
+        "constraints": [],
+        "workspace": ".",
+        "max_parallel_workers": 4,
+        "dry_run": True,
+    })())
+    assert graph.blocked_actions
+    assert graph.codex_next_actions
+    assert len(graph.nodes) >= 2
+    assert any(node.mode == "readonly" for node in graph.nodes)
+    assert any(node.execution_policy == "dry_run_only" for node in graph.nodes)
+
+
+def test_engine_orchestrate_task_reports_partial_handoff_for_blocked_database_write():
+    with patch("codexsaver.orchestrator.ProviderClient") as MockClient, \
+            patch("codexsaver.orchestrator.WorkPacketRuntime") as MockRuntime, \
+            patch("codexsaver.orchestrator.V3Orchestrator._apply_results_to_workspace"), \
+            patch("codexsaver.orchestrator.V3Orchestrator._build_final_aggregate_patch", return_value={
+                "patch": "aggregate",
+                "changed_files": ["docs/codexsaver-dry-run-import_textbooks.md"],
+                "notes": [],
+            }):
+        client = MockClient.return_value
+        client.complete_json.return_value = {
+            "status": "success",
+            "summary": "Readonly database flow inspected.",
+            "findings": ["Importer should default to dry-run."],
+            "risk_notes": ["Actual --apply must stay in Codex."],
+        }
+        runtime = MockRuntime.return_value
+        runtime.run.return_value = {
+            "route": "deepseek",
+            "status": "success",
+            "summary": "created dry-run validation notes",
+            "changed_files": ["docs/codexsaver-dry-run-import_textbooks.md"],
+            "patch": "--- a/docs/codexsaver-dry-run-import_textbooks.md\n+++ b/docs/codexsaver-dry-run-import_textbooks.md\n@@ -0,0 +1 @@\n+dry run only\n",
+            "checks": [],
+            "risk_notes": ["No writes executed."],
+        }
+
+        result = CodexSaverEngine().orchestrate_task({
+            "goal": "Rebuild database schema and write imported OCR text into lessons",
+            "files": ["scripts/import_textbooks.py"],
+            "workspace": ".",
+        })
+
+    assert result["status"] == "success"
+    assert result["blocked_actions"]
+    assert result["handoff"]["blocked_actions"]
+    assert result["metrics"]["deepseek_participation_percent"] >= 50
+
+
 def test_engine_run_specialist_preview():
     result = CodexSaverEngine().run_specialist({
         "specialist": "test_writer",
@@ -264,9 +320,9 @@ def test_engine_run_specialist_executes_readonly(tmp_path):
 def test_cli_orchestrate_dry_run(capsys):
     assert main([
         "orchestrate",
-        "Implement login, add tests, and add docs",
+        "Implement config parser, add tests, and add docs",
         "--files",
-        "src/user_auth.py",
+        "src/config_parser.py",
         "--dry-run",
     ]) == 0
     output = json.loads(capsys.readouterr().out)

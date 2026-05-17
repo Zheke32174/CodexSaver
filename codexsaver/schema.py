@@ -1,10 +1,27 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Any, Dict, List, Literal
 
 RiskLevel = Literal["low", "medium", "high"]
 Route = Literal["codex", "deepseek"]
+ActionType = Literal[
+    "readonly",
+    "generate_patch",
+    "generate_script",
+    "dry_run",
+    "execute_write",
+    "destructive",
+]
+RiskDomain = Literal[
+    "normal",
+    "auth",
+    "payment",
+    "database",
+    "schema",
+    "infra",
+    "secrets",
+]
 TaskType = Literal[
     "code_search",
     "explain",
@@ -125,6 +142,9 @@ class WorkGraphNode:
     allowed_commands: List[str]
     acceptance_criteria: List[str]
     mode: SpecialistMode
+    action_type: ActionType = "readonly"
+    risk_domain: RiskDomain = "normal"
+    execution_policy: str = "worker"
 
 
 @dataclass
@@ -133,6 +153,9 @@ class WorkGraph:
     route: OrchestratorRoute
     summary: str
     nodes: List[WorkGraphNode]
+    blocked_actions: List[str] = field(default_factory=list)
+    codex_next_actions: List[str] = field(default_factory=list)
+    handoff_summary: str = ""
 
 
 @dataclass

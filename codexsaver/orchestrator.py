@@ -46,6 +46,9 @@ class V3Orchestrator:
             "route": graph.route,
             "summary": graph.summary,
             "nodes": [to_dict(node) for node in graph.nodes],
+            "blocked_actions": graph.blocked_actions,
+            "codex_next_actions": graph.codex_next_actions,
+            "handoff_summary": graph.handoff_summary,
         }
 
         if request.dry_run:
@@ -58,8 +61,12 @@ class V3Orchestrator:
                     "node_count": len(graph.nodes),
                     "parallelizable_nodes": len([n for n in graph.nodes if n.mode != "readonly"]),
                     "estimated_savings_percent": self._estimate_savings(len(graph.nodes)),
+                    "deepseek_participation_percent": self._participation_percent(0, len(graph.nodes), len(graph.blocked_actions)),
                 },
-                "next_step": "Review the work graph, then execute individual nodes or continue implementing v3.",
+                "blocked_actions": graph.blocked_actions,
+                "codex_next_actions": graph.codex_next_actions,
+                "handoff_summary": graph.handoff_summary,
+                "next_step": "Review the work graph, then execute safe worker nodes or keep blocked actions in Codex.",
             }
 
         return self._execute_graph(request, graph.nodes, preview)
@@ -207,8 +214,22 @@ class V3Orchestrator:
                 "patch_nodes": len(patch_results),
                 "worker_calls": len(readonly_results) + len(patch_results),
                 "estimated_savings_percent": self._estimate_savings(len(nodes)),
+                "deepseek_participation_percent": self._participation_percent(
+                    len(readonly_results) + len(patch_results),
+                    len(nodes),
+                    len(preview.get("blocked_actions", [])),
+                ),
             },
             "codex_review_notes": aggregate["notes"],
+            "handoff": self._handoff_payload(
+                status="success",
+                summary="All worker nodes completed. Codex should review and apply if safe.",
+                results=readonly_results + patch_results,
+                blocked_actions=preview.get("blocked_actions", []),
+                codex_next_actions=preview.get("codex_next_actions", []),
+            ),
+            "blocked_actions": preview.get("blocked_actions", []),
+            "codex_next_actions": preview.get("codex_next_actions", []),
             "next_step": "Review the aggregate patch and specialist findings before applying changes.",
         }
 
@@ -302,9 +323,17 @@ class V3Orchestrator:
                 "node_count": len(nodes),
                 "worker_calls": len(results),
                 "estimated_savings_percent": self._estimate_savings(len(nodes)),
+                "deepseek_participation_percent": self._participation_percent(len(results), len(nodes), 0),
             },
             "codex_review_notes": review_notes,
             "combined_summary": specialist_summaries,
+            "handoff": self._handoff_payload(
+                status="success",
+                summary="Readonly specialists completed. Codex can use these findings for the next step.",
+                results=results,
+                blocked_actions=[],
+                codex_next_actions=["Review readonly findings and decide whether bounded patch execution is appropriate."],
+            ),
             "next_step": "Review the readonly findings and decide whether to continue with bounded patch execution.",
         }
 
@@ -440,6 +469,10 @@ class V3Orchestrator:
 
     def _needs_codex(self, summary: str, preview: Dict[str, Any], results: List[Dict[str, Any]],
                      node_count: int) -> Dict[str, Any]:
+        completed_worker_results = [
+            item for item in results
+            if item.get("status") == "success"
+        ]
         return {
             "route": "codex",
             "status": "needs_codex",
@@ -450,7 +483,22 @@ class V3Orchestrator:
                 "node_count": node_count,
                 "worker_calls": len(results),
                 "estimated_savings_percent": 0,
+                "deepseek_participation_percent": self._participation_percent(
+                    len(completed_worker_results),
+                    node_count,
+                    len(preview.get("blocked_actions", [])),
+                ),
             },
+            "handoff": self._handoff_payload(
+                status="partial" if completed_worker_results else "needs_codex",
+                summary=summary,
+                results=results,
+                blocked_actions=preview.get("blocked_actions", []),
+                codex_next_actions=preview.get("codex_next_actions", []),
+            ),
+            "blocked_actions": preview.get("blocked_actions", []),
+            "codex_next_actions": preview.get("codex_next_actions", []),
+            "partial_delegation": bool(completed_worker_results),
             "next_step": "Review partial specialist output and continue in Codex.",
         }
 
@@ -460,6 +508,43 @@ class V3Orchestrator:
         if node_count == 2:
             return 52
         return 58
+
+    def _participation_percent(self, worker_completed: int, worker_planned: int,
+                               codex_blocked_actions: int = 0) -> int:
+        total = max(1, worker_planned + codex_blocked_actions)
+        return round(worker_completed * 100 / total)
+
+    def _handoff_payload(self, status: str, summary: str, results: List[Dict[str, Any]],
+                         blocked_actions: List[str], codex_next_actions: List[str]) -> Dict[str, Any]:
+        delegated_work_done = [
+            {
+                "node_id": item.get("node_id"),
+                "specialist": item.get("specialist"),
+                "status": item.get("status"),
+                "summary": item.get("summary"),
+                "changed_files": item.get("changed_files", []),
+                "findings": item.get("findings", []),
+                "risk_notes": item.get("risk_notes", []),
+            }
+            for item in results
+        ]
+        commands_to_run = [
+            command
+            for item in results
+            for command in item.get("commands_to_run", [])
+        ]
+        return {
+            "status": status,
+            "summary": summary,
+            "delegated_work_done": delegated_work_done,
+            "commands_to_run": commands_to_run,
+            "blocked_actions": blocked_actions,
+            "codex_next_actions": codex_next_actions or [
+                "Review delegated evidence.",
+                "Run verification commands where appropriate.",
+                "Keep high-risk execution in Codex.",
+            ],
+        }
 
 
 def _readonly_system_prompt(specialist_name: str) -> str:

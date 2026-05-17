@@ -11,6 +11,7 @@ class LedgerEntry:
     node_count: int
     worker_calls: int
     estimated_savings_percent: int
+    deepseek_participation_percent: int = 0
 
 
 class CostLedger:
@@ -21,6 +22,8 @@ class CostLedger:
                 "worker_calls": 0,
                 "average_node_count": 0,
                 "average_estimated_savings_percent": 0,
+                "average_deepseek_participation_percent": 0,
+                "deepseek_majority_runs": 0,
             }
         return {
             "runs": len(entries),
@@ -28,5 +31,12 @@ class CostLedger:
             "average_node_count": sum(item.node_count for item in entries) // len(entries),
             "average_estimated_savings_percent": (
                 sum(item.estimated_savings_percent for item in entries) // len(entries)
+            ),
+            "average_deepseek_participation_percent": (
+                sum(item.deepseek_participation_percent for item in entries) // len(entries)
+            ),
+            "deepseek_majority_runs": sum(
+                1 for item in entries
+                if item.deepseek_participation_percent >= 50
             ),
         }

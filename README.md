@@ -241,6 +241,7 @@ Current v3 status in this repo:
 - `explainer` and `perf_reviewer` can execute as a real `readonly_swarm`
 - mixed graphs can execute bounded patch nodes through the v2 work-packet runtime
 - overlapping `changed_files` across the same patch batch return `needs_codex`
+- v3.4 adds action-level risk policy, partial handoff, and DeepSeek participation metrics
 - v3 is implemented as a CodexSaver-owned orchestration layer, not as a fragile Codex-native subagent config dependency
 
 Primary references:
@@ -249,6 +250,7 @@ Primary references:
 - [v3 task list](./docs/V3_TASKS.md)
 - [v3 benchmark, 2026-05-14](./docs/benchmarks/v3-benchmark-2026-05-14.md)
 - [v3 project benchmark, 2026-05-15](./docs/benchmarks/v3-project-benchmark-2026-05-15.md)
+- [v3.4 SWE-style benchmark, 2026-05-17](./docs/benchmarks/v34-swe-benchmark-2026-05-17.md)
 
 Current benchmark status:
 
@@ -257,6 +259,19 @@ Current benchmark status:
 - `impl + docs + explain`: completed successfully in the 2026-05-14 fixture run
 
 This means v3 is already real and testable, but still in an honest early stage rather than a full replacement for every v2 workflow.
+
+### V3.4: Action-Level Delegation And Handoff
+
+v3.4 changes the router from "does this task contain a risky word?" to "which actions inside this task are safe to delegate?"
+
+Examples:
+
+- `schema + readonly inspection` can go to DeepSeek
+- `schema + dry-run validation plan` can go to DeepSeek
+- `schema + execute migration` stays in Codex
+- `database + destructive rebuild` is split into safe prep nodes plus blocked Codex-only actions
+
+This is what lets DeepSeek carry more of the work without crossing the line into writes, migrations, secrets, auth, payment, or deployment execution. CodexSaver now returns a `handoff` object with delegated work done, blocked actions, and Codex next actions, so Codex can continue smoothly instead of starting over.
 
 ### Core Selling Point: Readonly Specialist Orchestration Works
 
@@ -367,18 +382,33 @@ Headline result on the current CodexSaver repository:
 - the cleanest success was `readonly_swarm`
 - patch-heavy orchestration still falls back conservatively
 
+### v3.4: SWE-Style Participation Benchmark
+
+Reference:
+
+- [v3.4 SWE-style benchmark, 2026-05-17](./docs/benchmarks/v34-swe-benchmark-2026-05-17.md)
+
+Headline result on six local SWE-style tasks:
+
+- average DeepSeek participation reached `55.7%`
+- `5 / 6` tasks reached at least `50%` DeepSeek participation
+- `2 / 6` tasks completed successfully end-to-end
+- fallback tasks still preserved partial worker output through handoff
+
 Summary table:
 
 | Lane | Best current use | Status |
 |---|---|---|
 | v2 | single bounded patch tasks | mature |
 | v3 readonly | explain + scan + perf hint specialists | established |
+| v3.4 action-level orchestration | safe prep, dry-run planning, partial handoff | established enough to exceed 50% worker participation |
 | v3 patch orchestration | docs/tests/impl mixed graphs | promising but still maturing |
 
 If you are evaluating CodexSaver today, the right mental model is:
 
 - use v2 when you want reliable bounded implementation
 - use v3 when you want Codex to cheaply orchestrate readonly specialists
+- use v3.4 when a larger SWE task contains safe prep work plus blocked high-risk actions
 - treat multi-patch v3 graphs as an advancing frontier, not solved magic
 
 ---

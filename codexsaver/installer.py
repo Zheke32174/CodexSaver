@@ -262,6 +262,7 @@ def _render_agents_block(project_name: str, profile: str) -> str:
         "## Tool Priority",
         "",
         "- Prefer `codexsaver.orchestrate_task` for decomposable low-risk work spanning docs, tests, explanation, or bounded implementation.",
+        "- For database/schema/import tasks, use CodexSaver only for safe preparation: readonly inspection, script drafts, validation SQL, dry-run plans, and reports.",
         "- Prefer `codexsaver.run_specialist` for an explicit specialist task such as explanation or tests only.",
         "- Prefer `codexsaver.delegate_work_packet` for a single bounded patch with explicit allowed files and checks.",
         "- Fall back to direct Codex execution only when CodexSaver returns `needs_codex`, fails repeatedly, or the task touches a protected domain.",
@@ -273,11 +274,13 @@ def _render_agents_block(project_name: str, profile: str) -> str:
         "- code explanation and repository scanning",
         "- formatting and boilerplate",
         "- small bounded refactors with explicit file scope",
+        "- database read-only inspection and dry-run validation planning",
         "",
         "## Do Not Route To CodexSaver By Default",
         "",
         "- auth, security, payment, permissions, secrets",
         "- destructive migrations or deploy logic",
+        "- direct database writes, schema migrations, destructive cleanup, or operations requiring credentials",
         "- ambiguous architecture decisions",
         "- final merge judgment without Codex review",
         "",
@@ -286,6 +289,7 @@ def _render_agents_block(project_name: str, profile: str) -> str:
         "- When CodexSaver returns checks, review them before applying changes.",
         "- Prefer allowlisted test or lint commands for generated tests and docs updates.",
         "- If CodexSaver reports overlapping patch outputs or protected-path conflicts, keep the task in Codex.",
+        "- If CodexSaver returns a `handoff`, reuse its delegated evidence and keep listed `blocked_actions` in Codex.",
     ]
     if profile == "full":
         body.extend([
@@ -308,13 +312,15 @@ import sys
 
 LOW_RISK_HINT = (
     "Prefer CodexSaver MCP tools for low-risk tests, docs, explanation, formatting, "
-    "and bounded implementation work. Keep auth, security, payment, migrations, "
-    "and ambiguous architecture work in Codex."
+    "bounded implementation work, and safe database preparation such as readonly "
+    "inspection or dry-run validation plans. Keep auth, security, payment, real "
+    "database writes, migrations, deploys, and ambiguous architecture work in Codex."
 )
 
 KEYWORDS = [
     "test", "pytest", "doc", "readme", "explain", "format", "refactor",
-    "单测", "测试", "文档", "解释", "格式化", "重构",
+    "dry-run", "schema", "database",
+    "单测", "测试", "文档", "解释", "格式化", "重构", "数据库", "表结构", "试运行",
 ]
 
 

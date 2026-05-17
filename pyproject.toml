@@ -1,6 +1,6 @@
 [project]
 name = "codexsaver"
-version = "0.3.0"
+version = "0.3.4"
 description = "Cost-aware LLM delegation tool for Codex"
 requires-python = ">=3.10"
 dependencies = []

@@ -139,7 +139,7 @@ def handle(request: Dict[str, Any], engine: CodexSaverEngine) -> None:
     id_ = request.get("id")
     if method == "initialize":
         respond(id_, {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}},
-                     "serverInfo": {"name": "codexsaver", "version": "0.3.0"}})
+                     "serverInfo": {"name": "codexsaver", "version": "0.3.4"}})
         return
     if method == "notifications/initialized":
         return

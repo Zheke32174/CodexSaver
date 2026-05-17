@@ -235,6 +235,7 @@ CodexSaver v3 把 v2 的单 worker 扩展成了一个小型 specialist 编排系
 - `explainer` 和 `perf_reviewer` 已能作为真实 `readonly_swarm` 执行
 - mixed graph 已能通过 v2 work-packet runtime 执行 bounded patch 节点
 - 同一批 patch 节点若 `changed_files` 重叠，会直接返回 `needs_codex`
+- v3.4 新增动作级风险策略、partial handoff 和 DeepSeek 参与率指标
 - v3 是 CodexSaver 自己的 orchestration 层，不依赖脆弱的 Codex 原生 subagent 私有配置
 
 主要参考：
@@ -243,6 +244,7 @@ CodexSaver v3 把 v2 的单 worker 扩展成了一个小型 specialist 编排系
 - [v3 开发任务清单](./docs/V3_TASKS.md)
 - [v3 基准测试，2026-05-14](./docs/benchmarks/v3-benchmark-2026-05-14.md)
 - [v3 项目基准测试，2026-05-15](./docs/benchmarks/v3-project-benchmark-2026-05-15.md)
+- [v3.4 SWE 风格基准测试，2026-05-17](./docs/benchmarks/v34-swe-benchmark-2026-05-17.md)
 
 当前 benchmark 状态：
 
@@ -251,6 +253,19 @@ CodexSaver v3 把 v2 的单 worker 扩展成了一个小型 specialist 编排系
 - `impl + docs + explain`：在 2026-05-14 的 fixture 运行里完整成功
 
 这意味着 v3 已经是真实可测的系统，但它目前仍处在“早期可用”阶段，还不是对所有 v2 场景的完整替代。
+
+### V3.4：动作级委派与接力
+
+v3.4 把路由判断从“任务里有没有风险词”升级成“这个任务里的哪些动作可以安全委派”。
+
+例如：
+
+- `schema + 只读检查` 可以交给 DeepSeek
+- `schema + dry-run 验证计划` 可以交给 DeepSeek
+- `schema + 执行迁移` 留给 Codex
+- `database + 破坏性重建` 会拆成安全准备节点和 Codex-only blocked actions
+
+这让 DeepSeek 能承担更多工作量，但不会越界到真实写库、迁移、密钥、认证、支付或部署执行。CodexSaver 现在会返回 `handoff`，里面包含已完成的委派工作、禁止动作和 Codex 下一步建议，所以 Codex 接回来时不用从头开始。
 
 ### 核心卖点：只读 Specialist 编排已经成立
 
@@ -361,18 +376,33 @@ CodexSaver 现在有两条 benchmark 叙事，而且两条都很重要：
 - 最有代表性的成功是 `readonly_swarm`
 - 更偏 patch 的编排路径还在保守回退
 
+### v3.4：SWE 风格参与率测试
+
+参考：
+
+- [v3.4 SWE 风格基准测试，2026-05-17](./docs/benchmarks/v34-swe-benchmark-2026-05-17.md)
+
+6 个本地 SWE 风格任务的核心结果：
+
+- 平均 DeepSeek 参与率达到 `55.7%`
+- `5 / 6` 个任务达到至少 `50%` DeepSeek 参与率
+- `2 / 6` 个任务端到端成功
+- 回退任务仍然通过 handoff 保留了 worker 已完成的部分
+
 总结表：
 
 | 通道 | 当前最强场景 | 成熟度 |
 |---|---|---|
 | v2 | 单个 bounded patch 任务 | 成熟 |
 | v3 只读通道 | explain + scan + perf hint specialist | 已成立 |
+| v3.4 动作级编排 | 安全准备、dry-run 计划、partial handoff | 已能稳定超过 50% worker 参与率 |
 | v3 patch 编排 | docs/tests/impl 混合图 | 有潜力但仍在成熟 |
 
 如果今天要判断该怎么用 CodexSaver，最准确的心智模型是：
 
 - 需要稳定 bounded implementation，就优先用 v2
 - 需要让 Codex 低成本编排只读 specialist，就优先用 v3
+- 大型 SWE 任务里同时包含安全准备和高风险动作时，用 v3.4
 - 多 patch 的 v3 graph 还应该被视作前沿能力，而不是已经完全解决的问题
 
 ---
