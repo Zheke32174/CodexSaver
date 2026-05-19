@@ -134,12 +134,32 @@ def run_specialist_schema() -> Dict[str, Any]:
     }
 
 
+def list_agents_schema() -> Dict[str, Any]:
+    return {
+        "name": "list_agents",
+        "description": (
+            "Discover v3.6 worker Agent Cards from .pi-agents, .pi/agents, and ~/.codexsaver/agents. "
+            "Use this to inspect the dynamic worker capability matrix before orchestration."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "init_builtin": {
+                    "type": "boolean",
+                    "description": "If true, write the builtin Pi Agent Card before listing.",
+                },
+            },
+        },
+    }
+
+
 def handle(request: Dict[str, Any], engine: CodexSaverEngine) -> None:
     method = request.get("method")
     id_ = request.get("id")
     if method == "initialize":
         respond(id_, {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}},
-                     "serverInfo": {"name": "codexsaver", "version": "0.3.4"}})
+                     "serverInfo": {"name": "codexsaver", "version": "0.3.6"}})
         return
     if method == "notifications/initialized":
         return
@@ -149,6 +169,7 @@ def handle(request: Dict[str, Any], engine: CodexSaverEngine) -> None:
             delegate_work_packet_schema(),
             orchestrate_task_schema(),
             run_specialist_schema(),
+            list_agents_schema(),
         ]})
         return
     if method == "tools/call":
@@ -171,7 +192,11 @@ def handle(request: Dict[str, Any], engine: CodexSaverEngine) -> None:
             result = engine.run_specialist(arguments)
             respond(id_, {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}]})
             return
-        if name not in {"delegate_task", "delegate_work_packet", "orchestrate_task", "run_specialist"}:
+        if name == "list_agents":
+            result = engine.list_agents(arguments)
+            respond(id_, {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}]})
+            return
+        if name not in {"delegate_task", "delegate_work_packet", "orchestrate_task", "run_specialist", "list_agents"}:
             respond(id_, error={"code": -32601, "message": f"Unknown tool: {name}"})
             return
     respond(id_, error={"code": -32601, "message": f"Unsupported method: {method}"})

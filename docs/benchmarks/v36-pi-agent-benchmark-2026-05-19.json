@@ -1,0 +1,135 @@
+{
+  "version": "0.3.6",
+  "date": "2026-05-19",
+  "benchmark": "v36-pi-agent-real-tasks",
+  "workspace": "/Users/f/GitHub/CodexSaver",
+  "baseline_note": "Codex baseline cost is estimated from observed worker tokens using a conservative $1.25/M input + $10/M output blended index of $5.625/M total tokens. Worker cost is reported by Pi/DeepSeek usage events.",
+  "summary": {
+    "tasks": 5,
+    "successes": 5,
+    "success_rate": 1.0,
+    "average_latency_seconds": 18.63,
+    "total_worker_cost_usd": 0.00968315,
+    "estimated_codex_baseline_cost_usd": 0.47955374,
+    "estimated_savings_percent": 98,
+    "average_quality_score": 1.0,
+    "average_worker_participation_percent": 100
+  },
+  "results": [
+    {
+      "name": "Config explanation + performance review",
+      "goal": "Explain config loader logic and review performance",
+      "files": [
+        "codexsaver/config.py"
+      ],
+      "route": "pi_agent",
+      "status": "success",
+      "latency_seconds": 14.62,
+      "worker_calls": 2,
+      "worker_participation_percent": 100,
+      "worker_cost_usd": 0.00161269,
+      "worker_tokens": 13784,
+      "codex_baseline_cost_usd": 0.077535,
+      "estimated_savings_percent": 98,
+      "quality_score": 1.0,
+      "findings_count": 12,
+      "risk_notes_count": 8,
+      "model": [
+        "deepseek-v4-flash"
+      ],
+      "summary": "v3 graph executed successfully."
+    },
+    {
+      "name": "Work packet sandbox risk review",
+      "goal": "Explain work packet sandbox flow and review performance risk",
+      "files": [
+        "codexsaver/work_packet.py"
+      ],
+      "route": "pi_agent",
+      "status": "success",
+      "latency_seconds": 17.48,
+      "worker_calls": 2,
+      "worker_participation_percent": 100,
+      "worker_cost_usd": 0.00236977,
+      "worker_tokens": 19048,
+      "codex_baseline_cost_usd": 0.107145,
+      "estimated_savings_percent": 98,
+      "quality_score": 1.0,
+      "findings_count": 19,
+      "risk_notes_count": 14,
+      "model": [
+        "deepseek-v4-flash"
+      ],
+      "summary": "v3 graph executed successfully."
+    },
+    {
+      "name": "Orchestrator routing review",
+      "goal": "Explain v3 orchestrator routing logic and review performance",
+      "files": [
+        "codexsaver/orchestrator.py"
+      ],
+      "route": "pi_agent",
+      "status": "success",
+      "latency_seconds": 30.55,
+      "worker_calls": 2,
+      "worker_participation_percent": 100,
+      "worker_cost_usd": 0.00244683,
+      "worker_tokens": 24748,
+      "codex_baseline_cost_usd": 0.1392075,
+      "estimated_savings_percent": 98,
+      "quality_score": 1.0,
+      "findings_count": 18,
+      "risk_notes_count": 15,
+      "model": [
+        "deepseek-v4-flash"
+      ],
+      "summary": "v3 graph executed successfully."
+    },
+    {
+      "name": "Installer flow review",
+      "goal": "Explain installer flow and review performance",
+      "files": [
+        "codexsaver/installer.py"
+      ],
+      "route": "pi_agent",
+      "status": "success",
+      "latency_seconds": 13.33,
+      "worker_calls": 2,
+      "worker_participation_percent": 100,
+      "worker_cost_usd": 0.00189657,
+      "worker_tokens": 15985,
+      "codex_baseline_cost_usd": 0.08991562,
+      "estimated_savings_percent": 98,
+      "quality_score": 1.0,
+      "findings_count": 15,
+      "risk_notes_count": 9,
+      "model": [
+        "deepseek-v4-flash"
+      ],
+      "summary": "v3 graph executed successfully."
+    },
+    {
+      "name": "MCP server protocol review",
+      "goal": "Explain MCP server tool dispatch and review performance",
+      "files": [
+        "codexsaver_mcp.py"
+      ],
+      "route": "pi_agent",
+      "status": "success",
+      "latency_seconds": 17.16,
+      "worker_calls": 2,
+      "worker_participation_percent": 100,
+      "worker_cost_usd": 0.00135729,
+      "worker_tokens": 11689,
+      "codex_baseline_cost_usd": 0.06575062,
+      "estimated_savings_percent": 98,
+      "quality_score": 1.0,
+      "findings_count": 11,
+      "risk_notes_count": 8,
+      "model": [
+        "deepseek-v4-flash"
+      ],
+      "summary": "v3 graph executed successfully."
+    }
+  ]
+}

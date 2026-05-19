@@ -326,6 +326,26 @@ class CodexSaverEngine:
     def run_specialist(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         return self.orchestrator.run_specialist(input_data)
 
+    def list_agents(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        workspace = input_data.get("workspace", ".")
+        if input_data.get("init_builtin"):
+            card_path = self.orchestrator.agent_registry.ensure_builtin_card(workspace)
+        else:
+            card_path = None
+        cards = self.orchestrator.agent_registry.discover(workspace)
+        return {
+            "status": "ok",
+            "workspace": str(Path(workspace).resolve()),
+            "registry": "agent_card",
+            "agent_card_dirs": [".pi-agents", ".pi/agents", "~/.codexsaver/agents"],
+            "initialized_card": card_path,
+            "agents": [
+                self.orchestrator._agent_card_preview(card)
+                for card in cards
+            ],
+            "next_step": "Use `codexsaver orchestrate --dry-run` to see per-node worker scoring.",
+        }
+
 
 DEFAULT_FORBIDDEN_PATHS = [
     ".github/**",

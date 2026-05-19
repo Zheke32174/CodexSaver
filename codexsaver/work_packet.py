@@ -52,9 +52,12 @@ Return valid JSON only. No markdown fences.
 Required JSON shape:
 {
   "status": "success | needs_codex | failed",
+  "intent": "what this patch is trying to change",
   "summary": "short summary",
   "changed_files": ["relative/path"],
   "patch": "unified diff",
+  "verification_plan": ["specific command or manual check"],
+  "rollback_notes": ["how to revert safely"],
   "risk_notes": ["short note"]
 }
 
@@ -63,6 +66,9 @@ Rules:
 - Touch only allowed_files.
 - Do not touch forbidden_paths.
 - Keep the patch within max_diff_lines.
+- changed_files must exactly match the files touched by the patch.
+- verification_plan must explain how the patch should be checked.
+- rollback_notes must explain how to revert or discard the patch.
 - If the previous observation contains a patch/check failure, repair the patch.
 - If you cannot safely complete the work packet, return status="needs_codex".
 
@@ -559,6 +565,9 @@ def work_packet_result(packet: WorkPacketInput, transcript: List[Dict[str, Any]]
         "summary": result.get("summary", ""),
         "changed_files": verification.changed_files or result.get("changed_files", []),
         "patch": result.get("patch", ""),
+        "intent": result.get("intent", ""),
+        "verification_plan": result.get("verification_plan", []),
+        "rollback_notes": result.get("rollback_notes", []),
         "checks": verification.executed_commands,
         "verification": to_dict(verification),
         "risk_notes": result.get("risk_notes", []),

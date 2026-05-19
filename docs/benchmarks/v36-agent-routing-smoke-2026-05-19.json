@@ -1,0 +1,59 @@
+{
+  "version": "0.3.6",
+  "date": "2026-05-19",
+  "benchmark": "v36-pi-agent-routing-smoke",
+  "commands": [
+    "python -m pytest tests/test_v3.py tests/test_v36.py -q -p no:cacheprovider",
+    "python cli.py agents list --workspace .",
+    "python cli.py orchestrate \"Explain config loader logic and review performance\" --files codexsaver/config.py --dry-run",
+    "codexsaver specialist explainer \"Return a short JSON summary for config.py\" --files codexsaver/config.py --workspace /Users/f/GitHub/CodexSaver",
+    "python cli.py orchestrate \"Explain config loader logic and review performance\" --files codexsaver/config.py --workspace ."
+  ],
+  "results": {
+    "targeted_tests": {
+      "status": "passed",
+      "count": 22,
+      "duration_seconds": 0.20
+    },
+    "full_tests": {
+      "status": "passed",
+      "count": 133,
+      "duration_seconds": 0.63
+    },
+    "agent_discovery": {
+      "status": "passed",
+      "discovered_agents": 1,
+      "builtin_agent_id": "pi-agent-default",
+      "default_worker": "pi-agent"
+    },
+    "dry_run_routing": {
+      "status": "passed",
+      "route": "readonly_swarm",
+      "node_count": 2,
+      "selected_worker": "pi-agent-default",
+      "scores": {
+        "explainer": 0.98,
+        "perf_reviewer": 0.98
+      }
+    },
+    "task_lifecycle": {
+      "status": "implemented",
+      "states": ["submitted", "running", "completed", "failed", "timed_out"]
+    },
+    "live_pi_specialist": {
+      "status": "passed",
+      "route": "pi_agent",
+      "selected_worker": "pi-agent-default"
+    },
+    "live_pi_readonly_swarm": {
+      "status": "passed",
+      "route": "pi_agent",
+      "worker_participation_percent": 100,
+      "selected_worker": "pi-agent-default"
+    },
+    "deepseek_fallback": {
+      "status": "removed_for_v36_live_worker_execution",
+      "provider_used_by_pi": "deepseek-v4-flash"
+    }
+  }
+}

@@ -15,6 +15,7 @@ from codexsaver.config import (
     save_provider_config,
 )
 from codexsaver.installer import doctor, install_config, install_global_config, install_superpower_profile
+from codexsaver.pi_agent import save_pi_deepseek_auth
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
         "superpower",
         "auth",
         "compression",
+        "agents",
     }:
         return _run_subcommand(argv)
     return _run_delegate(argv)
@@ -112,6 +114,18 @@ def _run_subcommand(argv: list[str]) -> int:
         choices=["lite", "full", "ultra", "wenyan"],
         help="Set compression level.",
     )
+
+    agents_parser = subparsers.add_parser(
+        "agents",
+        help="Discover v3.6 Agent Cards.",
+    )
+    agents_subparsers = agents_parser.add_subparsers(dest="agents_command", required=True)
+    agents_list_parser = agents_subparsers.add_parser("list", help="List discovered worker Agent Cards.")
+    agents_list_parser.add_argument("--workspace", default=".")
+    agents_list_parser.add_argument("--init-builtin", action="store_true",
+                                    help="Write .pi-agents/pi-agent.agent-card.json before listing.")
+    agents_init_parser = agents_subparsers.add_parser("init", help="Write the builtin Pi Agent Card.")
+    agents_init_parser.add_argument("--workspace", default=".")
 
     delegate_parser = subparsers.add_parser(
         "delegate",
@@ -238,6 +252,9 @@ def _run_subcommand(argv: list[str]) -> int:
             model=args.model,
             base_url=args.base_url,
         )
+        pi_auth = None
+        if report["provider"] == "deepseek" and args.api_key:
+            pi_auth = save_pi_deepseek_auth(args.api_key)
         print(json.dumps({
             "status": "ok",
             "config_path": report["config_path"],
@@ -252,6 +269,9 @@ def _run_subcommand(argv: list[str]) -> int:
             "deepseek_api_key_preview": (
                 report["key_preview"] if report["provider"] == "deepseek" else None
             ),
+            "pi_deepseek_auth_saved": bool(pi_auth),
+            "pi_deepseek_auth_path": pi_auth["path"] if pi_auth else None,
+            "pi_deepseek_auth_mode": pi_auth["mode"] if pi_auth else None,
             "next_step": "Run `python cli.py doctor` to verify CodexSaver can see the saved key.",
         }, ensure_ascii=False, indent=2))
         return 0
@@ -272,6 +292,14 @@ def _run_subcommand(argv: list[str]) -> int:
             "config_path": report["config_path"],
             "compression": report["compression"],
         }, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "agents":
+        result = CodexSaverEngine().list_agents({
+            "workspace": args.workspace,
+            "init_builtin": args.agents_command == "init" or getattr(args, "init_builtin", False),
+        })
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "superpower":

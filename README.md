@@ -16,10 +16,11 @@ the tool is active.
 - Lower-cost execution for tests, docs, search, and explanation work
 - Codex stays responsible for architecture, security, protected domains, and final review
 - Global-by-default Codex install, so every workspace can use the same MCP tool
-- DeepSeek by default, with presets for OpenAI, Anthropic, Gemini, Qwen, Ollama, LM Studio, and more
+- Pi Agent is the default v3 worker, with automatic discovery for other local Agent Card workers
+- DeepSeek and other LLM providers remain available for legacy v1/v2 provider-backed delegation
 - One-time local provider setup in `~/.codexsaver/config.json`
 - Optional worker-output compression for shorter, review-friendly delegated results
-- Verified with tests, real DeepSeek calls, and end-to-end MCP launcher checks
+- Verified with tests, Pi Agent routing smoke checks, historical DeepSeek calls, and end-to-end MCP launcher checks
 
 ---
 
@@ -170,7 +171,7 @@ They include an `interaction` block that makes the routing decision visible:
     "tool": "codexsaver.delegate_task",
     "mode": "delegated_execution",
     "headline": "CodexSaver delegated this task to the configured worker provider.",
-    "route_label": "[CodexSaver] route=deepseek task_type=write_tests risk=low",
+    "route_label": "[CodexSaver] route=pi_agent task_type=write_tests risk=low",
     "next_step": "Review the worker result and apply it only if the patch looks safe."
   }
 }
@@ -241,7 +242,9 @@ Current v3 status in this repo:
 - `explainer` and `perf_reviewer` can execute as a real `readonly_swarm`
 - mixed graphs can execute bounded patch nodes through the v2 work-packet runtime
 - overlapping `changed_files` across the same patch batch return `needs_codex`
-- v3.4 adds action-level risk policy, partial handoff, and DeepSeek participation metrics
+- v3.4 adds action-level risk policy, partial handoff, and worker participation metrics
+- v3.5 adds verified patch orchestration with strict patch output, lint, and node-level repair
+- v3.6 adds Agent Card discovery, weighted worker routing, and task lifecycle metadata
 - v3 is implemented as a CodexSaver-owned orchestration layer, not as a fragile Codex-native subagent config dependency
 
 Primary references:
@@ -251,10 +254,12 @@ Primary references:
 - [v3 benchmark, 2026-05-14](./docs/benchmarks/v3-benchmark-2026-05-14.md)
 - [v3 project benchmark, 2026-05-15](./docs/benchmarks/v3-project-benchmark-2026-05-15.md)
 - [v3.4 SWE-style benchmark, 2026-05-17](./docs/benchmarks/v34-swe-benchmark-2026-05-17.md)
+- [v3.6 Agent routing smoke test, 2026-05-19](./docs/benchmarks/v36-agent-routing-smoke-2026-05-19.md)
+- [v3.6 Pi Agent real-task benchmark, 2026-05-19](./docs/benchmarks/v36-pi-agent-benchmark-2026-05-19.md)
 
 Current benchmark status:
 
-- `readonly_swarm`: exercised, but still saw real-provider fallback in the 2026-05-14 fixture run
+- `readonly_swarm`: now live-tested through Pi Agent + DeepSeek V4 Flash on 5 repo tasks
 - `impl + tests`: exercised, but still conservative and may return `needs_codex`
 - `impl + docs + explain`: completed successfully in the 2026-05-14 fixture run
 
@@ -266,12 +271,89 @@ v3.4 changes the router from "does this task contain a risky word?" to "which ac
 
 Examples:
 
-- `schema + readonly inspection` can go to DeepSeek
-- `schema + dry-run validation plan` can go to DeepSeek
+- `schema + readonly inspection` can go to Pi Agent
+- `schema + dry-run validation plan` can go to Pi Agent
 - `schema + execute migration` stays in Codex
 - `database + destructive rebuild` is split into safe prep nodes plus blocked Codex-only actions
 
-This is what lets DeepSeek carry more of the work without crossing the line into writes, migrations, secrets, auth, payment, or deployment execution. CodexSaver now returns a `handoff` object with delegated work done, blocked actions, and Codex next actions, so Codex can continue smoothly instead of starting over.
+This is what lets Pi Agent and other local workers carry more of the work without crossing the line into writes, migrations, secrets, auth, payment, or deployment execution. CodexSaver now returns a `handoff` object with delegated work done, blocked actions, and Codex next actions, so Codex can continue smoothly instead of starting over.
+
+### V3.5: Verified Patch Orchestration
+
+v3.5 makes patch-producing nodes stricter before CodexSaver tries to aggregate them.
+Patch workers must now return a structured result:
+
+- `intent`
+- `changed_files`
+- `patch`
+- `verification_plan`
+- `rollback_notes`
+
+Before aggregation, CodexSaver runs patch lint:
+
+- rejects empty patches
+- checks that `changed_files` exactly matches the diff
+- rejects duplicate file writes in the same batch
+- verifies the patch stays inside allowed files
+- applies the patch in a sandbox before materializing it
+
+If a patch node fails, v3.5 retries that node with repair context instead of throwing away the whole graph immediately. `test_writer` also has stronger rules: plan the test file path, import path, and exact pytest command before returning a patch.
+
+### V3.6: Agent Card Registry And Weighted Routing
+
+v3.6 moves CodexSaver from hardcoded DeepSeek worker assumptions toward Pi Agent-first dynamic worker discovery.
+Workers can be described by `.agent-card.json` files under `.pi-agents/`, `.pi/agents/`,
+or `~/.codexsaver/agents`:
+
+```json
+{
+  "id": "pi-agent-default",
+  "name": "Pi Agent Worker",
+  "type": "pi",
+  "status": "online",
+  "capabilities": ["code_generation", "testing", "docs"],
+  "languages": ["python", "javascript"],
+  "endpoint": "local:pi-side-agents",
+  "command": ["pi", "--provider", "deepseek", "--model", "deepseek-v4-flash", "--mode", "json", "--no-session", "-p"],
+  "worktree_path": ".pi-worktrees/pi-agent",
+  "permissions_config": ".pi/permissions.json",
+  "cost_weight": 0.1
+}
+```
+
+CodexSaver scores discovered workers instead of using a brittle `if/else` tree:
+
+| Dimension | Weight |
+|---|---:|
+| Capability match | `0.40` |
+| Historical success | `0.25` |
+| Cost weight | `0.20` |
+| Current load | `0.10` |
+| Context fit | `0.05` |
+
+The orchestration dry-run now includes the discovered Agent Cards and the selected Pi/local worker for every node. Real execution results include `selected_worker` and an A2A-compatible task lifecycle:
+
+```text
+submitted -> running -> completed
+                  -> failed
+                  -> timed_out
+```
+
+CLI:
+
+```bash
+codexsaver agents list --workspace .
+codexsaver agents init --workspace .
+codexsaver orchestrate "Explain config loader logic and review performance" --files codexsaver/config.py --dry-run
+```
+
+v3.6 smoke test results:
+
+- Targeted tests: `22 passed in 0.20s`
+- Builtin Agent Card discovery: passed
+- Dry-run selected `pi-agent-default` for `explainer` and `perf_reviewer`
+- Weighted route score for both readonly Python nodes: `0.98`
+- Live execution no longer silently falls back to DeepSeek; if the Pi command is unavailable, v3.6 returns `needs_codex`
 
 ### Core Selling Point: Readonly Specialist Orchestration Works
 
@@ -279,7 +361,7 @@ The most important v3 claim is no longer theoretical. In the project benchmark r
 2026-05-15, the readonly specialist lane succeeded on the current CodexSaver codebase:
 
 - Task: `Explain installer flow and review performance`
-- Route: `deepseek`
+- Route: `pi_agent`
 - Status: `success`
 - Savings: `52%`
 - Latency: `6.45s`
@@ -390,10 +472,26 @@ Reference:
 
 Headline result on six local SWE-style tasks:
 
-- average DeepSeek participation reached `55.7%`
-- `5 / 6` tasks reached at least `50%` DeepSeek participation
+- average worker participation reached `55.7%`
+- `5 / 6` tasks reached at least `50%` worker participation
 - `2 / 6` tasks completed successfully end-to-end
 - fallback tasks still preserved partial worker output through handoff
+
+### v3.6: Pi Agent Real-Task Benchmark
+
+Reference:
+
+- [v3.6 Pi Agent real-task benchmark, 2026-05-19](./docs/benchmarks/v36-pi-agent-benchmark-2026-05-19.md)
+
+Headline result on five live readonly orchestration tasks:
+
+- `5 / 5` tasks succeeded
+- average latency was `18.63s`
+- measured Pi/DeepSeek worker cost was `$0.00968315`
+- same token volume under the documented Codex baseline was estimated at `$0.47955374`
+- estimated savings reached `98%`
+- average quality score was `1.0`
+- worker participation reached `100%`
 
 Summary table:
 
@@ -415,6 +513,17 @@ If you are evaluating CodexSaver today, the right mental model is:
 
 ## Quick Start
 
+### Dependencies
+
+CodexSaver keeps the core small:
+
+| Dependency | Required for | Notes |
+|---|---|---|
+| Python `3.10+` | CodexSaver CLI and MCP server | runtime code uses the Python standard library |
+| Node.js + npm | installing Pi Agent | needed for v3.6 live worker orchestration |
+| Pi Agent CLI | default v3.6 worker | installed from `@earendil-works/pi-coding-agent` |
+| DeepSeek API key | Pi Agent worker model + v1/v2 provider lane | saved once, reused locally |
+
 ### Recommended Global Install
 
 ```bash
@@ -422,19 +531,30 @@ git clone https://github.com/fendouai/CodexSaver
 cd CodexSaver
 
 python -m pip install -e .
-codexsaver auth set --provider deepseek --api-key YOUR_API_KEY
+npm install -g @earendil-works/pi-coding-agent
+codexsaver auth set --provider deepseek --api-key YOUR_DEEPSEEK_API_KEY
 codexsaver install
 codexsaver doctor --workspace .
+codexsaver agents list --workspace .
+codexsaver orchestrate "Explain config loader logic and review performance" --files codexsaver/config.py --workspace .
 ```
 
-That is it. `codexsaver install` writes a global Codex MCP entry to
-`~/.codex/config.toml` and points it at a stable launcher:
-`~/.codexsaver/codexsaver_mcp.py`.
+That is the default v3.6 path. `codexsaver auth set --provider deepseek ...`
+saves the key for both CodexSaver and Pi Agent:
+
+- `~/.codexsaver/config.json`
+- `~/.pi/agent/auth.json`
+
+Both files are written with `0600` permissions. `codexsaver install` writes a
+global Codex MCP entry to `~/.codex/config.toml` and points it at a stable
+launcher: `~/.codexsaver/codexsaver_mcp.py`.
 
 After that, every Codex workspace can call:
 
 ```text
 codexsaver.delegate_task
+codexsaver.orchestrate_task
+codexsaver.run_specialist
 ```
 
 Use `--project` only when you want a repository-local `.codex/config.toml`:
@@ -445,8 +565,15 @@ codexsaver install --project
 
 ### Provider Setup
 
-DeepSeek is the default because it is inexpensive and exposes an OpenAI-compatible API.
-Switching providers is just one flag:
+v3.6 uses Pi Agent through Agent Cards. The DeepSeek key saved above is used by
+the default Pi Agent command:
+
+```bash
+pi --provider deepseek --model deepseek-v4-flash --mode json --no-session -p "Say ok"
+```
+
+Provider setup is also useful for the legacy v1/v2 `delegate_task` and
+`delegate_work_packet` lanes. Switching that provider-backed lane is one flag:
 
 ```bash
 codexsaver auth set --provider openai --api-key YOUR_API_KEY --model gpt-4o-mini
@@ -861,7 +988,7 @@ codexsaver specialist explainer "Explain this module" --files codexsaver/config.
 - [x] MCP server
 - [x] rule-based routing
 - [x] bounded context packing
-- [x] DeepSeek default worker integration
+- [x] Pi Agent default v3 worker integration
 - [x] multi-provider OpenAI-compatible worker support
 - [x] local API key persistence
 - [x] worker output compression toggles and provider prompt injection

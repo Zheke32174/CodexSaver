@@ -51,11 +51,12 @@ Goal: allow multiple specialists to produce verified patches on disjoint file se
 
 - [x] Convert a work-graph node into a v2 work packet
 - [x] Execute bounded patch nodes through isolated sandboxes
-- [ ] Enforce node-level file ownership
+- [x] Enforce node-level file ownership
 - [x] Aggregate disjoint patches into one output
 - [x] Reject overlapping writes with `needs_codex`
 - [x] Add tests for disjoint merge success
 - [x] Add tests for overlap conflict failure
+- [x] Add pre-aggregation patch lint for empty, mismatched, duplicate, and non-applying patches
 
 Acceptance:
 
@@ -69,10 +70,10 @@ Acceptance:
 
 Goal: make node-level repair loops practical and bounded.
 
-- [ ] Add per-node repair budget
-- [ ] Feed compact verifier failures back into the same specialist
+- [x] Add per-node repair budget
+- [x] Feed compact verifier failures back into the same specialist
 - [ ] Track repair counts in metrics
-- [ ] Add tests for apply failure -> repair success
+- [x] Add tests for apply failure -> repair success
 - [ ] Add tests for retry exhaustion -> `needs_codex`
 
 Acceptance:
@@ -105,7 +106,10 @@ Acceptance:
 
 Goal: make orchestration choose the right strategy automatically.
 
-- [ ] Add specialist success-rate scoring
+- [x] Add specialist success-rate scoring
+- [x] Add Agent Card discovery from `.pi-agents/`, `.pi/agents`, and `~/.codexsaver/agents`
+- [x] Add weighted worker scoring for capability, history, cost, load, and context
+- [x] Add A2A-compatible task lifecycle metadata
 - [ ] Add provider fallback policy
 - [ ] Add route scoring for single-worker vs multi-worker
 - [ ] Add budget caps for fan-out
@@ -145,6 +149,9 @@ Acceptance:
 - `codexsaver/aggregator.py`: patch/result aggregation and conflict detection
 - `codexsaver/ledger.py`: benchmark and cost summaries
 - `codexsaver/work_packet.py`: v2 execution primitive reused by v3 nodes
+- `codexsaver/agent_registry.py`: v3.6 Agent Card discovery and builtin Pi Agent card
+- `codexsaver/agent_router.py`: v3.6 weighted worker scoring
+- `codexsaver/task_lifecycle.py`: v3.6 task ID and status flow
 - `codexsaver/engine.py`: public API surface for CLI/MCP
 
 ---
@@ -155,4 +162,4 @@ Recommended next coding milestone:
 
 1. Enforce node-level ownership and richer conflict semantics beyond `changed_files`.
 2. Add per-node repair metrics and durable ledger persistence.
-3. Benchmark v3 against v2 on more composite tasks and document the tradeoffs.
+3. Replace the builtin Agent Card with real `pi-side-agents` subprocess dispatch behind the same routing interface.

@@ -7,6 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .agent_registry import AgentCard, AgentRegistry
+from .agent_router import AgentRouter
 from .aggregator import PatchAggregator
 from .context import ContextPacker
 from .cost import CostEstimator
@@ -19,14 +21,21 @@ from .schema import (
     WorkGraphNode,
     to_dict,
 )
+from .pi_agent import PiAgentClient
 from .specialists import SpecialistRegistry
+from .task_lifecycle import TaskLifecycle, task_record_payload
 from .work_graph import WorkGraphPlanner
-from .work_packet import WorkPacketRuntime
+from .work_packet import PatchSandbox, WorkPacketRuntime, changed_files_from_patch, verify_patch_policy
 
 
 class V3Orchestrator:
-    def __init__(self, registry: SpecialistRegistry | None = None):
+    def __init__(self, registry: SpecialistRegistry | None = None,
+                 agent_registry: AgentRegistry | None = None,
+                 agent_router: AgentRouter | None = None):
         self.registry = registry or SpecialistRegistry()
+        self.agent_registry = agent_registry or AgentRegistry()
+        self.agent_router = agent_router or AgentRouter()
+        self.task_lifecycle = TaskLifecycle()
         self.planner = WorkGraphPlanner(self.registry)
         self.aggregator = PatchAggregator()
         self.cost = CostEstimator()
@@ -50,6 +59,13 @@ class V3Orchestrator:
             "codex_next_actions": graph.codex_next_actions,
             "handoff_summary": graph.handoff_summary,
         }
+        agent_cards = self.agent_registry.discover(request.workspace)
+        agent_routing = self._agent_routing_preview(agent_cards, graph.nodes)
+        preview["agents"] = {
+            "registry": "agent_card",
+            "discovered": [self._agent_card_preview(card) for card in agent_cards],
+            "routing": agent_routing,
+        }
 
         if request.dry_run:
             return {
@@ -61,7 +77,8 @@ class V3Orchestrator:
                     "node_count": len(graph.nodes),
                     "parallelizable_nodes": len([n for n in graph.nodes if n.mode != "readonly"]),
                     "estimated_savings_percent": self._estimate_savings(len(graph.nodes)),
-                    "deepseek_participation_percent": self._participation_percent(0, len(graph.nodes), len(graph.blocked_actions)),
+                    "worker_participation_percent": self._participation_percent(0, len(graph.nodes), len(graph.blocked_actions)),
+                    "discovered_agents": len(agent_cards),
                 },
                 "blocked_actions": graph.blocked_actions,
                 "codex_next_actions": graph.codex_next_actions,
@@ -133,8 +150,8 @@ class V3Orchestrator:
         )
         if profile.mode == "readonly":
             context = ContextPacker(workspace=request.workspace).load(request.files or request.allowed_files)
-            result = self._run_readonly_node(node, context)
-            result["route"] = "deepseek" if result["status"] == "success" else "codex"
+            result = self._run_readonly_node(node, context, request.workspace)
+            result["route"] = "pi_agent" if result["status"] == "success" else "codex"
             return result
         return self._run_patch_node(node, request.workspace, request.files or request.allowed_files)
 
@@ -193,7 +210,7 @@ class V3Orchestrator:
 
         aggregate = self._build_final_aggregate_patch(original_workspace, current_workspace, patch_results)
         return {
-            "route": "deepseek",
+            "route": "pi_agent",
             "status": "success",
             "summary": "v3 graph executed successfully.",
             "graph": preview,
@@ -214,7 +231,7 @@ class V3Orchestrator:
                 "patch_nodes": len(patch_results),
                 "worker_calls": len(readonly_results) + len(patch_results),
                 "estimated_savings_percent": self._estimate_savings(len(nodes)),
-                "deepseek_participation_percent": self._participation_percent(
+                "worker_participation_percent": self._participation_percent(
                     len(readonly_results) + len(patch_results),
                     len(nodes),
                     len(preview.get("blocked_actions", [])),
@@ -239,7 +256,7 @@ class V3Orchestrator:
         context = ContextPacker(workspace=str(workspace)).load(context_files)
         max_workers = min(max(1, max_parallel_workers), max(1, len(nodes)))
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            return list(executor.map(lambda node: self._run_readonly_node(node, context), nodes))
+            return list(executor.map(lambda node: self._run_readonly_node(node, context, str(workspace)), nodes))
 
     def _execute_patch_batch(self, workspace: Path, base_files: List[str],
                              nodes: List[WorkGraphNode], max_parallel_workers: int) -> Dict[str, Any]:
@@ -249,12 +266,21 @@ class V3Orchestrator:
                 lambda node: self._run_patch_node(node, str(workspace), base_files),
                 nodes,
             ))
+        results = self._repair_failed_patch_nodes(workspace, base_files, nodes, results)
         failed = [item for item in results if item["status"] != "success"]
         if failed:
             return {
                 "status": "needs_codex",
                 "summary": "One or more patch specialists failed verification.",
                 "results": results,
+            }
+        lint = self._lint_patch_results(workspace, nodes, results)
+        if not lint["ok"]:
+            return {
+                "status": "needs_codex",
+                "summary": f"Patch lint failed before aggregation: {lint['reason']}",
+                "results": results,
+                "lint": lint,
             }
         aggregate = self.aggregator.aggregate(results)
         if not aggregate.ok:
@@ -276,12 +302,104 @@ class V3Orchestrator:
             "results": results,
         }
 
+    def _repair_failed_patch_nodes(self, workspace: Path, base_files: List[str],
+                                   nodes: List[WorkGraphNode],
+                                   results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        repaired: List[Dict[str, Any]] = []
+        node_by_id = {node.id: node for node in nodes}
+        for result in results:
+            if result.get("status") == "success":
+                repaired.append(result)
+                continue
+            node = node_by_id.get(str(result.get("node_id")))
+            if node is None:
+                repaired.append(result)
+                continue
+            repair_node = WorkGraphNode(
+                id=node.id,
+                type=node.type,
+                goal=(
+                    f"{node.goal}\n\nRepair the previous failed patch node. "
+                    f"Failure summary: {result.get('summary', '')}. "
+                    f"Risk notes: {result.get('risk_notes', [])}. "
+                    "Return a complete corrected patch with verification_plan and rollback_notes."
+                ),
+                depends_on=node.depends_on,
+                specialist=node.specialist,
+                allowed_files=node.allowed_files,
+                forbidden_paths=node.forbidden_paths,
+                allowed_commands=node.allowed_commands,
+                acceptance_criteria=node.acceptance_criteria,
+                mode=node.mode,
+                action_type=node.action_type,
+                risk_domain=node.risk_domain,
+                execution_policy=node.execution_policy,
+            )
+            repair_result = self._run_patch_node(repair_node, str(workspace), base_files, force_repair=True)
+            if repair_result.get("status") == "success":
+                repair_result["repair_of"] = result
+                repaired.append(repair_result)
+            else:
+                result["repair_attempt"] = repair_result
+                repaired.append(result)
+        return repaired
+
+    def _lint_patch_results(self, workspace: Path, nodes: List[WorkGraphNode],
+                            results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        node_by_id = {node.id: node for node in nodes}
+        seen: set[str] = set()
+        for item in results:
+            patch = str(item.get("patch", ""))
+            if item.get("preflight_satisfied"):
+                continue
+            if not patch.strip():
+                return {"ok": False, "reason": f"Empty patch from {item.get('specialist')}"}
+            patch_files = changed_files_from_patch(patch)
+            declared_files = sorted(set(item.get("changed_files", [])))
+            if sorted(patch_files) != declared_files:
+                return {
+                    "ok": False,
+                    "reason": (
+                        f"changed_files mismatch for {item.get('specialist')}: "
+                        f"declared={declared_files}, patch={patch_files}"
+                    ),
+                }
+            duplicate = [path for path in patch_files if path in seen]
+            if duplicate:
+                return {"ok": False, "reason": f"Duplicate changed_files before aggregation: {duplicate}"}
+            seen.update(patch_files)
+            node = node_by_id.get(str(item.get("node_id")))
+            allowed_files = node.allowed_files if node else declared_files
+            forbidden_paths = node.forbidden_paths if node else []
+            packet = WorkPacketInput(
+                goal=str(item.get("summary", "")),
+                files=[],
+                constraints=[],
+                acceptance_criteria=[],
+                allowed_files=allowed_files,
+                forbidden_paths=forbidden_paths,
+                allowed_commands=[],
+                workspace=str(workspace),
+            )
+            policy = verify_patch_policy(patch, packet)
+            if not policy.ok:
+                return {"ok": False, "reason": policy.reason, "warnings": policy.warnings}
+            sandbox = PatchSandbox(workspace, packet)
+            observation = sandbox.propose_patch(patch)
+            if observation.get("type") != "patch_applied":
+                return {"ok": False, "reason": observation.get("reason", "Patch did not apply."), "observation": observation}
+            if not item.get("verification_plan"):
+                return {"ok": False, "reason": f"Missing verification_plan for {item.get('specialist')}"}
+            if not item.get("rollback_notes"):
+                return {"ok": False, "reason": f"Missing rollback_notes for {item.get('specialist')}"}
+        return {"ok": True, "reason": "Patch lint passed."}
+
     def _execute_readonly_graph(self, request: OrchestrateTaskInput,
                                 nodes: List[WorkGraphNode]) -> Dict[str, Any]:
         context = ContextPacker(workspace=request.workspace).load(request.files)
         max_workers = min(max(1, request.max_parallel_workers), max(1, len(nodes)))
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            results = list(executor.map(lambda node: self._run_readonly_node(node, context), nodes))
+            results = list(executor.map(lambda node: self._run_readonly_node(node, context, request.workspace), nodes))
 
         failed = [item for item in results if item["status"] != "success"]
         if failed:
@@ -305,7 +423,7 @@ class V3Orchestrator:
         for item in results:
             review_notes.extend(item.get("risk_notes", []))
         return {
-            "route": "deepseek",
+            "route": "pi_agent",
             "status": "success",
             "summary": "Readonly specialists completed in parallel.",
             "results": results,
@@ -323,7 +441,7 @@ class V3Orchestrator:
                 "node_count": len(nodes),
                 "worker_calls": len(results),
                 "estimated_savings_percent": self._estimate_savings(len(nodes)),
-                "deepseek_participation_percent": self._participation_percent(len(results), len(nodes), 0),
+                "worker_participation_percent": self._participation_percent(len(results), len(nodes), 0),
             },
             "codex_review_notes": review_notes,
             "combined_summary": specialist_summaries,
@@ -337,10 +455,14 @@ class V3Orchestrator:
             "next_step": "Review the readonly findings and decide whether to continue with bounded patch execution.",
         }
 
-    def _run_readonly_node(self, node: WorkGraphNode, context: List[FileContext]) -> Dict[str, Any]:
+    def _run_readonly_node(self, node: WorkGraphNode, context: List[FileContext],
+                           workspace: str = ".") -> Dict[str, Any]:
         profile = self.registry.get(node.specialist)
+        selected = self._select_agent(node, workspace)
+        worker_id = selected.get("worker", {}).get("id", "unknown")
+        task = self.task_lifecycle.running(self.task_lifecycle.submitted(node.id, worker_id))
         try:
-            client = ProviderClient(provider=profile.provider, model=profile.model)
+            client = self._client_for_node(profile.provider, profile.model, selected)
             response = client.complete_json(
                 _readonly_system_prompt(profile.name),
                 {
@@ -351,6 +473,7 @@ class V3Orchestrator:
                 },
             )
         except ProviderError as e:
+            task = self.task_lifecycle.failed(task)
             return {
                 "node_id": node.id,
                 "specialist": profile.name,
@@ -358,7 +481,10 @@ class V3Orchestrator:
                 "summary": f"{profile.name} failed: {e}",
                 "findings": [],
                 "risk_notes": [str(e)],
+                "selected_worker": selected,
+                "task_lifecycle": task_record_payload(task),
             }
+        task = self.task_lifecycle.completed(task) if response.get("status") == "success" else self.task_lifecycle.failed(task)
         return {
             "node_id": node.id,
             "specialist": profile.name,
@@ -366,14 +492,22 @@ class V3Orchestrator:
             "summary": str(response.get("summary", "")),
             "findings": list(response.get("findings", [])),
             "risk_notes": list(response.get("risk_notes", [])),
+            "worker_usage": response.get("_worker_usage", {}),
+            "worker_provider": response.get("_worker_provider", ""),
+            "worker_model": response.get("_worker_model", ""),
+            "selected_worker": selected,
+            "task_lifecycle": task_record_payload(task),
         }
 
     def _run_patch_node(self, node: WorkGraphNode, workspace: str,
-                        base_files: List[str]) -> Dict[str, Any]:
+                        base_files: List[str], force_repair: bool = False) -> Dict[str, Any]:
         profile = self.registry.get(node.specialist)
         context_files = list(dict.fromkeys((base_files or []) + node.allowed_files))
+        selected = self._select_agent(node, workspace)
+        worker_id = selected.get("worker", {}).get("id", "unknown")
+        task = self.task_lifecycle.running(self.task_lifecycle.submitted(node.id, worker_id))
         try:
-            runtime = WorkPacketRuntime(ProviderClient(provider=profile.provider, model=profile.model))
+            runtime = WorkPacketRuntime(self._client_for_node(profile.provider, profile.model, selected))
             result = runtime.run(WorkPacketInput(
                 goal=node.goal,
                 files=context_files,
@@ -383,11 +517,12 @@ class V3Orchestrator:
                 forbidden_paths=node.forbidden_paths,
                 allowed_commands=node.allowed_commands,
                 workspace=workspace,
-                delegation_level="repair_loop" if node.allowed_commands else "bounded_impl",
-                max_iterations=3,
+                delegation_level="repair_loop" if (node.allowed_commands or force_repair) else "bounded_impl",
+                max_iterations=4 if force_repair else 3,
                 max_diff_lines=300,
             ))
-        except ProviderError as e:
+        except (ProviderError, ValueError) as e:
+            task = self.task_lifecycle.failed(task)
             return {
                 "node_id": node.id,
                 "specialist": profile.name,
@@ -397,10 +532,54 @@ class V3Orchestrator:
                 "patch": "",
                 "checks": [],
                 "risk_notes": [str(e)],
+                "selected_worker": selected,
+                "task_lifecycle": task_record_payload(task),
             }
+        task = self.task_lifecycle.completed(task) if result.get("status") == "success" else self.task_lifecycle.failed(task)
         result["node_id"] = node.id
         result["specialist"] = profile.name
+        result["selected_worker"] = selected
+        result["task_lifecycle"] = task_record_payload(task)
         return result
+
+    def _select_agent(self, node: WorkGraphNode, workspace: str = ".") -> Dict[str, Any]:
+        cards = self.agent_registry.discover(workspace)
+        return self.agent_router.select(node, cards)
+
+    def _client_for_node(self, provider: str, model: str, selected: Dict[str, Any]):
+        if provider == "pi-agent":
+            worker = selected.get("worker")
+            if not worker:
+                raise ProviderError("No Pi Agent worker selected for this node.")
+            return PiAgentClient(AgentCard(**worker))
+        return ProviderClient(provider=provider, model=model)
+
+    def _agent_routing_preview(self, cards, nodes: List[WorkGraphNode]) -> Dict[str, Any]:
+        return {
+            node.id: self.agent_router.select(node, cards)
+            for node in nodes
+        }
+
+    def _agent_card_preview(self, card) -> Dict[str, Any]:
+        return {
+            "id": card.id,
+            "name": card.name,
+            "type": card.type,
+            "status": card.status,
+            "capabilities": card.capabilities,
+            "languages": card.languages,
+            "endpoint": card.endpoint,
+            "command": card.command,
+            "cost_weight": card.cost_weight,
+            "success_rate": card.success_rate,
+            "current_load": card.current_load,
+            "context_window": card.context_window,
+            "worktree_path": card.worktree_path,
+            "permissions_config": card.permissions_config,
+            "filesystem_policy": card.filesystem_policy,
+            "network_policy": card.network_policy,
+            "source": card.source,
+        }
 
     def _copy_workspace(self, workspace: Path) -> Path:
         target = Path(tempfile.mkdtemp(prefix="codexsaver-v3-"))
@@ -483,7 +662,7 @@ class V3Orchestrator:
                 "node_count": node_count,
                 "worker_calls": len(results),
                 "estimated_savings_percent": 0,
-                "deepseek_participation_percent": self._participation_percent(
+                "worker_participation_percent": self._participation_percent(
                     len(completed_worker_results),
                     node_count,
                     len(preview.get("blocked_actions", [])),
@@ -574,6 +753,10 @@ def _specialist_constraints(specialist_name: str) -> List[str]:
             "Generate or update focused tests only.",
             "Prefer pytest for Python and Jest-style structure for JS/TS.",
             "Cover normal path, edge cases, and one failure path when practical.",
+            "Before writing tests, infer the exact import path from the target file path.",
+            "Put Python tests under tests/test_<module>.py unless an existing test file is allowlisted.",
+            "verification_plan must include the exact pytest command for the generated test file.",
+            "rollback_notes must explain that deleting the generated test file reverts the change.",
         ]
     if specialist_name == "doc_writer":
         return [

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
@@ -115,6 +117,7 @@ def doctor(workspace: str) -> Dict[str, Any]:
     global_config_has_codexsaver = _has_codexsaver_section(global_config)
     provider = resolve_provider_config()
     compression = load_compression_config()
+    pi = _pi_status()
     return {
         "workspace": str(root),
         "script_exists": script_path.exists(),
@@ -144,6 +147,13 @@ def doctor(workspace: str) -> Dict[str, Any]:
         "deepseek_api_key_preview": mask_secret(provider.api_key),
         "compression_enabled": compression["enabled"],
         "compression_level": compression["level"],
+        "pi_command": pi["command"],
+        "pi_installed": pi["installed"],
+        "pi_version": pi["version"],
+        "pi_deepseek_key_configured": pi["deepseek_key_configured"],
+        "pi_auth_path": pi["auth_path"],
+        "pi_auth_exists": pi["auth_exists"],
+        "pi_auth_mode": pi["auth_mode"],
         "project_agents_path": str(root / "AGENTS.md"),
         "project_agents_has_codexsaver_block": _has_codexsaver_agents_block(root / "AGENTS.md"),
         "project_hooks_path": str(root / ".codex" / "hooks.json"),
@@ -153,6 +163,8 @@ def doctor(workspace: str) -> Dict[str, Any]:
             script_exists=script_path.exists(),
             codexsaver_installed=project_config_has_codexsaver or global_config_has_codexsaver,
             api_key_configured=bool(provider.api_key) or not provider.requires_api_key,
+            pi_installed=pi["installed"],
+            pi_deepseek_key_configured=pi["deepseek_key_configured"],
         ),
     }
 
@@ -434,12 +446,54 @@ def _superpower_notes(profile: str, apply_hooks: bool, apply_project_config: boo
     return notes
 
 
+def _pi_status() -> Dict[str, Any]:
+    command = shutil.which("pi")
+    auth_path = Path.home() / ".pi" / "agent" / "auth.json"
+    auth_exists = auth_path.exists()
+    auth_mode = ""
+    deepseek_key_configured = False
+    if auth_exists:
+        auth_mode = oct(auth_path.stat().st_mode & 0o777)[2:]
+        try:
+            data = json.loads(auth_path.read_text(encoding="utf-8"))
+            deepseek = data.get("deepseek")
+            deepseek_key_configured = isinstance(deepseek, dict) and bool(deepseek.get("key"))
+        except (json.JSONDecodeError, OSError):
+            deepseek_key_configured = False
+    version = ""
+    if command:
+        try:
+            completed = subprocess.run(
+                [command, "--version"],
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+            version = (completed.stdout or completed.stderr).strip()
+        except (OSError, subprocess.TimeoutExpired):
+            version = ""
+    return {
+        "command": command,
+        "installed": bool(command),
+        "version": version,
+        "deepseek_key_configured": deepseek_key_configured,
+        "auth_path": str(auth_path),
+        "auth_exists": auth_exists,
+        "auth_mode": auth_mode,
+    }
+
+
 def _recommended_next_step(script_exists: bool, codexsaver_installed: bool,
-                           api_key_configured: bool) -> str:
+                           api_key_configured: bool, pi_installed: bool = True,
+                           pi_deepseek_key_configured: bool = True) -> str:
     if not script_exists:
         return "Run this command from the CodexSaver project root."
     if not codexsaver_installed:
         return "Run `codexsaver install` to enable CodexSaver in every Codex workspace."
     if not api_key_configured:
         return "Run `codexsaver auth set --provider deepseek --api-key ...` before live delegated calls."
-    return "CodexSaver is ready. Open this workspace in Codex and call codexsaver.delegate_task."
+    if not pi_installed:
+        return "Run `npm install -g @earendil-works/pi-coding-agent` to enable v3.6 Pi Agent orchestration."
+    if not pi_deepseek_key_configured:
+        return "Save the DeepSeek key for Pi at `~/.pi/agent/auth.json` before live v3.6 Pi Agent calls."
+    return "CodexSaver is ready. Use `codexsaver orchestrate ...` or call CodexSaver MCP tools from Codex."

@@ -61,7 +61,7 @@ def test_engine_orchestrate_task_dry_run():
 
 
 def test_engine_orchestrate_task_executes_readonly_specialists_in_parallel():
-    with patch("codexsaver.orchestrator.ProviderClient") as MockClient:
+    with patch("codexsaver.orchestrator.PiAgentClient") as MockClient:
         client = MockClient.return_value
         client.complete_json.side_effect = [
             {
@@ -83,7 +83,7 @@ def test_engine_orchestrate_task_executes_readonly_specialists_in_parallel():
         })
 
     assert result["status"] == "success"
-    assert result["route"] == "deepseek"
+    assert result["route"] == "pi_agent"
     assert result["aggregate_patch"] == ""
     assert len(result["results"]) == 2
     assert result["results"][0]["status"] == "success"
@@ -92,7 +92,7 @@ def test_engine_orchestrate_task_executes_readonly_specialists_in_parallel():
 
 
 def test_engine_orchestrate_task_readonly_failure_returns_codex():
-    with patch("codexsaver.orchestrator.ProviderClient") as MockClient:
+    with patch("codexsaver.orchestrator.PiAgentClient") as MockClient:
         client = MockClient.return_value
         client.complete_json.side_effect = ProviderError("timeout")
         result = CodexSaverEngine().orchestrate_task({
@@ -105,8 +105,11 @@ def test_engine_orchestrate_task_readonly_failure_returns_codex():
     assert result["results"][0]["status"] == "failed"
 
 
-def test_engine_orchestrate_task_executes_patch_nodes_and_aggregates():
-    with patch("codexsaver.orchestrator.ProviderClient"), \
+def test_engine_orchestrate_task_executes_patch_nodes_and_aggregates(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "config_parser.py").write_text("pass\n", encoding="utf-8")
+    with patch("codexsaver.orchestrator.PiAgentClient"), \
             patch("codexsaver.orchestrator.WorkPacketRuntime") as MockRuntime, \
             patch("codexsaver.orchestrator.V3Orchestrator._apply_results_to_workspace"), \
             patch("codexsaver.orchestrator.V3Orchestrator._build_final_aggregate_patch", return_value={
@@ -117,7 +120,7 @@ def test_engine_orchestrate_task_executes_patch_nodes_and_aggregates():
         runtime = MockRuntime.return_value
         runtime.run.side_effect = [
             {
-                "route": "deepseek",
+                "route": "pi_agent",
                 "status": "success",
                 "summary": "implemented login",
                 "changed_files": ["src/config_parser.py"],
@@ -130,38 +133,44 @@ def test_engine_orchestrate_task_executes_patch_nodes_and_aggregates():
                     "+return True\n"
                 ),
                 "checks": [],
+                "verification_plan": ["python -m pytest tests/test_config_parser.py -q"],
+                "rollback_notes": ["Revert src/config_parser.py."],
                 "risk_notes": [],
             },
             {
-                "route": "deepseek",
+                "route": "pi_agent",
                 "status": "success",
                 "summary": "added tests",
                 "changed_files": ["tests/test_config_parser.py"],
                 "patch": (
-                    "--- a/tests/test_config_parser.py\n"
+                    "diff --git a/tests/test_config_parser.py b/tests/test_config_parser.py\n"
+                    "new file mode 100644\n"
+                    "--- /dev/null\n"
                     "+++ b/tests/test_config_parser.py\n"
-                    "@@ -0,0 +1,1 @@\n"
+                    "@@ -0,0 +1 @@\n"
                     "+def test_login(): pass\n"
                 ),
                 "checks": [{"command": "pytest tests/test_config_parser.py -q", "exit_code": 0}],
+                "verification_plan": ["python -m pytest tests/test_config_parser.py -q"],
+                "rollback_notes": ["Delete tests/test_config_parser.py."],
                 "risk_notes": [],
             },
         ]
         result = CodexSaverEngine().orchestrate_task({
             "goal": "Implement config parser and add tests",
             "files": ["src/config_parser.py"],
-            "workspace": ".",
+            "workspace": str(tmp_path),
         })
 
     assert result["status"] == "success"
-    assert result["route"] == "deepseek"
+    assert result["route"] == "pi_agent"
     assert "src/config_parser.py" in result["changed_files"]
     assert "tests/test_config_parser.py" in result["changed_files"]
     assert result["metrics"]["patch_nodes"] == 2
 
 
 def test_engine_orchestrate_task_patch_conflict_returns_codex():
-    with patch("codexsaver.orchestrator.ProviderClient"), \
+    with patch("codexsaver.orchestrator.PiAgentClient"), \
             patch("codexsaver.orchestrator.WorkPacketRuntime") as MockRuntime, \
             patch("codexsaver.orchestrator.V3Orchestrator._apply_results_to_workspace"), \
             patch("codexsaver.orchestrator.WorkGraphPlanner.plan", return_value=WorkGraph(
@@ -198,21 +207,25 @@ def test_engine_orchestrate_task_patch_conflict_returns_codex():
         runtime = MockRuntime.return_value
         runtime.run.side_effect = [
             {
-                "route": "deepseek",
+                "route": "pi_agent",
                 "status": "success",
                 "summary": "doc patch",
                 "changed_files": ["README.md"],
                 "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-a\n+b\n",
                 "checks": [],
+                "verification_plan": ["Review README.md."],
+                "rollback_notes": ["Revert README.md."],
                 "risk_notes": [],
             },
             {
-                "route": "deepseek",
+                "route": "pi_agent",
                 "status": "success",
                 "summary": "another doc patch",
                 "changed_files": ["README.md"],
                 "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-a\n+c\n",
                 "checks": [],
+                "verification_plan": ["Review README.md."],
+                "rollback_notes": ["Revert README.md."],
                 "risk_notes": [],
             },
         ]
@@ -224,6 +237,105 @@ def test_engine_orchestrate_task_patch_conflict_returns_codex():
 
     assert result["status"] == "needs_codex"
     assert result["route"] == "codex"
+
+
+def test_engine_orchestrate_repairs_failed_patch_node(tmp_path):
+    (tmp_path / "README.md").write_text("old\n", encoding="utf-8")
+    with patch("codexsaver.orchestrator.PiAgentClient"), \
+            patch("codexsaver.orchestrator.WorkPacketRuntime") as MockRuntime, \
+            patch("codexsaver.orchestrator.WorkGraphPlanner.plan", return_value=WorkGraph(
+                graph_id="graph-repair",
+                route="single_worker",
+                summary="repair graph",
+                nodes=[
+                    WorkGraphNode(
+                        id="docs-1",
+                        type="bounded_patch",
+                        goal="update readme",
+                        depends_on=[],
+                        specialist="doc_writer",
+                        allowed_files=["README.md"],
+                        forbidden_paths=[],
+                        allowed_commands=[],
+                        acceptance_criteria=[],
+                        mode="bounded_patch",
+                    ),
+                ],
+            )):
+        runtime = MockRuntime.return_value
+        runtime.run.side_effect = [
+            {
+                "route": "codex",
+                "status": "needs_codex",
+                "summary": "first patch failed",
+                "changed_files": [],
+                "patch": "",
+                "checks": [],
+                "risk_notes": ["Patch did not apply."],
+            },
+            {
+                "route": "pi_agent",
+                "status": "success",
+                "summary": "repaired doc patch",
+                "changed_files": ["README.md"],
+                "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n+new\n",
+                "checks": [],
+                "verification_plan": ["Review README.md."],
+                "rollback_notes": ["Revert README.md."],
+                "risk_notes": [],
+            },
+        ]
+        result = CodexSaverEngine().orchestrate_task({
+            "goal": "Update README docs",
+            "files": ["README.md"],
+            "workspace": str(tmp_path),
+        })
+
+    assert result["status"] == "success"
+    assert result["results"][0]["repair_of"]["status"] == "needs_codex"
+
+
+def test_engine_orchestrate_lints_missing_verification_plan(tmp_path):
+    (tmp_path / "README.md").write_text("old\n", encoding="utf-8")
+    with patch("codexsaver.orchestrator.PiAgentClient"), \
+            patch("codexsaver.orchestrator.WorkPacketRuntime") as MockRuntime, \
+            patch("codexsaver.orchestrator.WorkGraphPlanner.plan", return_value=WorkGraph(
+                graph_id="graph-lint",
+                route="single_worker",
+                summary="lint graph",
+                nodes=[
+                    WorkGraphNode(
+                        id="docs-1",
+                        type="bounded_patch",
+                        goal="update readme",
+                        depends_on=[],
+                        specialist="doc_writer",
+                        allowed_files=["README.md"],
+                        forbidden_paths=[],
+                        allowed_commands=[],
+                        acceptance_criteria=[],
+                        mode="bounded_patch",
+                    ),
+                ],
+            )):
+        runtime = MockRuntime.return_value
+        runtime.run.return_value = {
+            "route": "pi_agent",
+            "status": "success",
+            "summary": "doc patch",
+            "changed_files": ["README.md"],
+            "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n+new\n",
+            "checks": [],
+            "risk_notes": [],
+        }
+        result = CodexSaverEngine().orchestrate_task({
+            "goal": "Update README docs",
+            "files": ["README.md"],
+            "workspace": str(tmp_path),
+        })
+
+    assert result["status"] == "needs_codex"
+    assert "verification_plan" in result["summary"]
 
 
 def test_work_graph_planner_splits_database_write_into_safe_prep_nodes():
@@ -244,7 +356,7 @@ def test_work_graph_planner_splits_database_write_into_safe_prep_nodes():
 
 
 def test_engine_orchestrate_task_reports_partial_handoff_for_blocked_database_write():
-    with patch("codexsaver.orchestrator.ProviderClient") as MockClient, \
+    with patch("codexsaver.orchestrator.PiAgentClient") as MockClient, \
             patch("codexsaver.orchestrator.WorkPacketRuntime") as MockRuntime, \
             patch("codexsaver.orchestrator.V3Orchestrator._apply_results_to_workspace"), \
             patch("codexsaver.orchestrator.V3Orchestrator._build_final_aggregate_patch", return_value={
@@ -261,12 +373,14 @@ def test_engine_orchestrate_task_reports_partial_handoff_for_blocked_database_wr
         }
         runtime = MockRuntime.return_value
         runtime.run.return_value = {
-            "route": "deepseek",
+            "route": "pi_agent",
             "status": "success",
             "summary": "created dry-run validation notes",
             "changed_files": ["docs/codexsaver-dry-run-import_textbooks.md"],
             "patch": "--- a/docs/codexsaver-dry-run-import_textbooks.md\n+++ b/docs/codexsaver-dry-run-import_textbooks.md\n@@ -0,0 +1 @@\n+dry run only\n",
             "checks": [],
+            "verification_plan": ["Review dry-run documentation."],
+            "rollback_notes": ["Delete docs/codexsaver-dry-run-import_textbooks.md."],
             "risk_notes": ["No writes executed."],
         }
 
@@ -279,7 +393,7 @@ def test_engine_orchestrate_task_reports_partial_handoff_for_blocked_database_wr
     assert result["status"] == "success"
     assert result["blocked_actions"]
     assert result["handoff"]["blocked_actions"]
-    assert result["metrics"]["deepseek_participation_percent"] >= 50
+    assert result["metrics"]["worker_participation_percent"] >= 50
 
 
 def test_engine_run_specialist_preview():
@@ -297,7 +411,7 @@ def test_engine_run_specialist_preview():
 def test_engine_run_specialist_executes_readonly(tmp_path):
     sample = tmp_path / "sample.py"
     sample.write_text("def f():\n    return 1\n", encoding="utf-8")
-    with patch("codexsaver.orchestrator.ProviderClient") as MockClient:
+    with patch("codexsaver.orchestrator.PiAgentClient") as MockClient:
         client = MockClient.return_value
         client.complete_json.return_value = {
             "status": "success",
@@ -312,7 +426,7 @@ def test_engine_run_specialist_executes_readonly(tmp_path):
             "workspace": str(tmp_path),
         })
 
-    assert result["route"] == "deepseek"
+    assert result["route"] == "pi_agent"
     assert result["status"] == "success"
     assert result["summary"] == "Function explained."
 

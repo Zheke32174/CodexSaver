@@ -87,6 +87,29 @@ def test_doctor_reports_missing_setup(tmp_path, monkeypatch):
     assert result["compression_level"] == "full"
 
 
+def test_doctor_reports_pi_agent_status(tmp_path, monkeypatch):
+    (tmp_path / "codexsaver_mcp.py").write_text("print('ok')\n", encoding="utf-8")
+    auth_path = tmp_path / "home" / ".pi" / "agent" / "auth.json"
+    auth_path.parent.mkdir(parents=True)
+    auth_path.write_text(json.dumps({"deepseek": {"type": "api_key", "key": "sk-test"}}), encoding="utf-8")
+    auth_path.chmod(0o600)
+    monkeypatch.setattr("codexsaver.installer.Path.home", lambda: tmp_path / "home")
+    monkeypatch.setattr("codexsaver.installer.shutil.which", lambda name: "/usr/local/bin/pi" if name == "pi" else None)
+
+    class Completed:
+        stdout = "0.75.3\n"
+        stderr = ""
+
+    monkeypatch.setattr("codexsaver.installer.subprocess.run", lambda *args, **kwargs: Completed())
+
+    result = doctor(str(tmp_path))
+
+    assert result["pi_installed"] is True
+    assert result["pi_version"] == "0.75.3"
+    assert result["pi_deepseek_key_configured"] is True
+    assert result["pi_auth_mode"] == "600"
+
+
 def test_cli_install_and_doctor(tmp_path, monkeypatch, capsys):
     (tmp_path / "codexsaver_mcp.py").write_text("print('ok')\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
@@ -138,6 +161,27 @@ def test_cli_auth_set(tmp_path, monkeypatch, capsys):
     assert auth_output["deepseek_api_key_saved"] is False
     assert auth_output["deepseek_api_key_preview"] is None
     assert config_path.exists()
+
+
+def test_cli_auth_set_deepseek_also_saves_pi_auth(tmp_path, monkeypatch, capsys):
+    config_path = tmp_path / "saved-config.json"
+    home = tmp_path / "home"
+    monkeypatch.setattr("codexsaver.config.CONFIG_PATH", config_path)
+    monkeypatch.setattr("codexsaver.pi_agent.Path.home", lambda: home)
+
+    assert main([
+        "auth", "set",
+        "--provider", "deepseek",
+        "--api-key", "sk-test-key",
+    ]) == 0
+    auth_output = json.loads(capsys.readouterr().out)
+    pi_auth_path = home / ".pi" / "agent" / "auth.json"
+
+    assert auth_output["deepseek_api_key_saved"] is True
+    assert auth_output["pi_deepseek_auth_saved"] is True
+    assert auth_output["pi_deepseek_auth_mode"] == "600"
+    assert pi_auth_path.exists()
+    assert json.loads(pi_auth_path.read_text(encoding="utf-8"))["deepseek"]["key"] == "sk-test-key"
 
 
 def test_cli_auth_set_local_provider_without_key(tmp_path, monkeypatch, capsys):

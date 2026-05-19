@@ -15,11 +15,11 @@ specialized, parallel workers.
 
 - Codex owns planning, ambiguity handling, risk judgment, and final review.
 - CodexSaver owns decomposition, specialist dispatch, sandboxed execution, verification, and aggregation.
-- Cheap worker models handle bounded throughput work in parallel.
+- Pi Agent is the default local worker; other local Agent Card workers can join the pool.
 
 **Slogan**
 
-_DeepSeek does more of the work. Codex keeps the judgment._
+_Pi Agent does the local work. Codex keeps the judgment._
 
 ---
 
@@ -73,7 +73,7 @@ v3 is intentionally not:
 The correct design is not:
 
 ```text
-Codex native subagents + custom config.toml magic + DeepSeek everywhere
+Codex native subagents + custom config.toml magic + one hardcoded DeepSeek worker
 ```
 
 The correct design is:
@@ -115,11 +115,11 @@ CodexSaver MCP Server
   ├─ Evidence Reporter
   └─ Benchmark / Cost Ledger
   ↓
-Cheap worker providers
-  ├─ DeepSeek
-  ├─ optional OpenAI mini models
-  ├─ optional local OSS models
-  └─ future provider pool
+Local Agent Card workers
+  ├─ Pi Agent (default)
+  ├─ optional Aider agent
+  ├─ optional Claude Code agent
+  └─ custom local workers
   ↓
 Codex receives verified evidence
   ↓
@@ -299,32 +299,32 @@ max_repair_rounds = 2
 fallback_to_codex_on_conflict = true
 
 [workers.impl_worker]
-provider = "deepseek"
-model = "deepseek-coder"
+provider = "pi-agent"
+model = "pi-agent-default"
 mode = "bounded_patch"
 prompt_file = "~/.codexsaver/prompts/impl_worker.md"
 
 [workers.test_writer]
-provider = "deepseek"
-model = "deepseek-coder"
+provider = "pi-agent"
+model = "pi-agent-default"
 mode = "bounded_patch"
 prompt_file = "~/.codexsaver/prompts/test_writer.md"
 
 [workers.doc_writer]
-provider = "deepseek"
-model = "deepseek-coder"
+provider = "pi-agent"
+model = "pi-agent-default"
 mode = "bounded_patch"
 prompt_file = "~/.codexsaver/prompts/doc_writer.md"
 
 [workers.explainer]
-provider = "deepseek"
-model = "deepseek-chat"
+provider = "pi-agent"
+model = "pi-agent-default"
 mode = "readonly"
 prompt_file = "~/.codexsaver/prompts/explainer.md"
 
 [workers.perf_reviewer]
-provider = "deepseek"
-model = "deepseek-coder"
+provider = "pi-agent"
+model = "pi-agent-default"
 mode = "readonly"
 prompt_file = "~/.codexsaver/prompts/perf_reviewer.md"
 ```
@@ -772,7 +772,7 @@ These should remain explicit until implementation:
 1. Should v3 aggregate into a single unified patch or return a patch bundle first?
 2. Should repair loops happen per node only, or also after aggregation?
 3. Should explanation/perf specialists be pure read-only workers or allowed to annotate files?
-4. Should there be a provider fallback chain when DeepSeek fails?
+4. Should there be a local agent fallback chain when Pi Agent fails?
 5. Should the cost ledger be persisted locally in JSON, SQLite, or plain benchmark artifacts?
 
 ---
@@ -826,7 +826,78 @@ This keeps the system configurable without forcing invasive setup on every user.
 
 ---
 
-## 22. Final Position
+## 22. v3.5/v3.6 Refinements
+
+### 22.1 Verified Patch Orchestration
+
+Patch-producing nodes must return a public handoff schema rather than loose text:
+
+- `intent`
+- `changed_files`
+- `patch`
+- `verification_plan`
+- `rollback_notes`
+- `risk_notes`
+
+Before aggregation, CodexSaver runs patch lint:
+
+- the patch must be non-empty
+- `changed_files` must match files touched by the diff
+- no two nodes in the same batch may write the same file
+- the patch must stay inside `allowed_files`
+- the patch must apply cleanly in a sandbox
+
+Failed patch nodes should get a bounded node-level repair attempt before the
+whole graph returns `needs_codex`.
+
+### 22.2 Agent Card Discovery
+
+v3.6 uses Agent Card files as the minimal worker registration format.
+CodexSaver scans:
+
+- `.pi-agents/*.agent-card.json`
+- `.pi/agents/*.agent-card.json`
+- `~/.codexsaver/agents/*.agent-card.json`
+
+The builtin Pi Agent card is always available as a safe default. This keeps the
+system useful with zero configuration while allowing users to add more workers
+without editing Codex config.
+
+v3.6 should not silently fall back to DeepSeek for v3 worker execution. If the
+Pi Agent command is unavailable, the live node returns `needs_codex`; DeepSeek
+remains an optional provider-backed lane for earlier delegation tools.
+
+### 22.3 Weighted Worker Routing
+
+Worker selection is score-based:
+
+| Dimension | Weight |
+|---|---:|
+| Capability match | `0.40` |
+| Historical success | `0.25` |
+| Cost weight | `0.20` |
+| Current load | `0.10` |
+| Context fit | `0.05` |
+
+The router still obeys the existing safety policy first. Scoring only happens
+after a task or node is considered safe enough to delegate.
+
+### 22.4 Task Lifecycle
+
+Every delegated node should expose a task ID and A2A-compatible state flow:
+
+```text
+submitted -> running -> completed
+                  -> failed
+                  -> timed_out
+```
+
+This is intentionally smaller than a full A2A implementation, but keeps the
+semantic upgrade path open.
+
+---
+
+## 23. Final Position
 
 v3 is feasible and strategically strong, but only if implemented in the right layer.
 
@@ -838,7 +909,7 @@ The winning design is:
 That gives CodexSaver a durable architecture:
 
 - Codex remains the premium reasoning layer
-- cheap models do more real work
+- Pi Agent and local workers do more real work
 - verification keeps the system honest
 - metrics decide whether the orchestration is actually better
 
