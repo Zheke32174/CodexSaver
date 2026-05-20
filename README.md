@@ -646,13 +646,13 @@ codexsaver doctor --workspace .
 If Codex is already open in this repository, you can just say:
 
 ```text
-Save my worker provider API key for CodexSaver, run `codexsaver auth set --provider deepseek --api-key ...`, then run `codexsaver install` and `codexsaver doctor --workspace .`, and tell me whether it is ready.
+Clone CodexSaver if needed, install it with `python -m pip install -e .`, install Pi Agent with `npm install -g @earendil-works/pi-coding-agent`, save my DeepSeek key with `codexsaver auth set --provider deepseek --api-key ...`, then run `codexsaver install`, `codexsaver doctor --workspace .`, and `codexsaver agents list --workspace .`.
 ```
 
 For repo-local setup:
 
 ```text
-Save my worker provider API key for CodexSaver, install CodexSaver only for this repo, run `codexsaver auth set --provider deepseek --api-key ...`, `codexsaver install --project`, then `codexsaver doctor --workspace .`, and summarize the result.
+Clone CodexSaver if needed, install it and Pi Agent, save my DeepSeek key with `codexsaver auth set --provider deepseek --api-key ...`, install CodexSaver only for this repo with `codexsaver install --project`, then run `codexsaver doctor --workspace .` and `codexsaver agents list --workspace .`.
 ```
 
 Ready means:
@@ -660,6 +660,8 @@ Ready means:
 - `~/.codex/config.toml` contains the global `codexsaver` MCP server, or `.codex/config.toml` exists in the repo
 - `~/.codexsaver/codexsaver_mcp.py` exists for global installs
 - provider settings are available from env vars or `~/.codexsaver/config.json`
+- Pi Agent is installed and visible as `pi`
+- the DeepSeek key is available to Pi in `~/.pi/agent/auth.json`
 - compression settings are available from `~/.codexsaver/config.json`
 - `codexsaver doctor --workspace .` reports `CodexSaver is ready`
 
@@ -704,33 +706,35 @@ codexsaver delegate "add unit tests for user service" --files src/user/service.t
 
 ---
 
-## Verified V2 Setup Flow
+## Verified V3.6 Setup Flow
 
-Measured on May 12, 2026 with the editable install, global launcher, and local-key workflow:
+Measured on May 20, 2026 with the editable install, Pi Agent, global launcher,
+and local DeepSeek key workflow:
 
 | Check | Command | Result |
 |---|---|---|
-| Editable install | `python -m pip install -e .` | installed `codexsaver-0.2.0` |
-| Full test suite | `PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider` | `97 passed in 0.41s` |
-| Global install | `codexsaver install --workspace .` | global config points at `~/.codexsaver/codexsaver_mcp.py` |
-| Local provider persistence | `codexsaver auth set --provider deepseek --api-key ...` | saved to `~/.codexsaver/config.json` |
-| Compression config | `codexsaver compression set --enabled true --level full` | saved to `~/.codexsaver/config.json` |
-| Workspace doctor | `codexsaver doctor --workspace .` | `provider_api_key_source=local_config:deepseek`, workspace ready |
-| Global launcher check | `python ~/.codexsaver/codexsaver_mcp.py` with MCP `initialize` | returned `serverInfo.version=0.2.0` |
-| V2 MCP tool check | MCP `tools/list` | includes `delegate_work_packet` |
-| V2 preflight check | MCP `tools/call delegate_work_packet` | returned `preflight_satisfied=true` |
+| Clone source | `git clone https://github.com/fendouai/CodexSaver` | source checkout first |
+| Editable install | `python -m pip install -e .` | installs `codexsaver` CLI |
+| Pi Agent install | `npm install -g @earendil-works/pi-coding-agent` | installs `pi` CLI |
+| Key persistence | `codexsaver auth set --provider deepseek --api-key ...` | saves `~/.codexsaver/config.json` and `~/.pi/agent/auth.json` |
+| Global MCP install | `codexsaver install` | global config points at `~/.codexsaver/codexsaver_mcp.py` |
+| Workspace doctor | `codexsaver doctor --workspace .` | reports CodexSaver, Pi Agent, and key readiness |
+| Agent discovery | `codexsaver agents list --workspace .` | discovers `pi-agent-default` |
+| Live v3.6 smoke | `codexsaver orchestrate "Explain config loader logic and review performance" --files codexsaver/config.py --workspace .` | `route=pi_agent`, `status=success` |
+| Full test suite | `python -m pytest -q -p no:cacheprovider` | current suite passes |
 
 This is the intended workflow:
 
-1. Save the key once
-2. Install the editable package and global launcher
-3. Confirm readiness with `doctor`
-4. Restart/reload any already-open MCP process if it was started before installation
-5. Use real delegated calls without re-exporting API keys
+1. Clone the repository.
+2. Install CodexSaver and Pi Agent.
+3. Save the DeepSeek key once.
+4. Install the global MCP launcher.
+5. Confirm readiness with `doctor` and `agents list`.
+6. Use v3.6 Pi Agent orchestration without re-exporting API keys.
 
 If an already-open Codex window was using an older MCP process, stop or reload
-that MCP server. The global launcher is the source of truth for v2 and returns
-`serverInfo.version=0.2.0`.
+that MCP server. The global launcher is the source of truth and returns
+`serverInfo.version=0.3.6`.
 
 ---
 
@@ -753,77 +757,38 @@ Run `codexsaver auth providers` for the complete list.
 
 ---
 
-## Post-Setup Usage Ratio
+## V3.6 Five-Task Benchmark
 
-After setup completed, I measured the actual routed tasks in this working session.
-I only counted tasks that truly entered model routing, not local commands like `pytest`,
-`git`, `install`, `doctor`, or README editing.
+Latest v3.6 reports:
 
-Result:
-
-- `DeepSeek`: `7 / 8 = 87.5%`
-- `Codex`: `1 / 8 = 12.5%`
-
-Why not 100%?
-
-One test-writing prompt originally included the phrase `production logic`.
-That triggered the router's intentional high-risk keyword guard and returned the task to Codex.
-This was not a failure. It was the protection logic working as designed.
-
-If you only count the later standardized five-task benchmark with natural low-risk phrasing,
-the delegation ratio was:
-
-- `DeepSeek`: `5 / 5 = 100%`
-- `Codex`: `0 / 5 = 0%`
-
-Takeaway:
-
-- In real usage, CodexSaver defaulted to DeepSeek for most low-risk work
-- It still preserved a strict fallback path for risky wording and protected domains
-
----
-
-## Five-Task A/B Benchmark
-
-Latest v2 reports:
-
-- [v2 restart confirmation, 2026-05-12](./docs/benchmarks/v2-restart-confirmation-2026-05-12.md)
-- [v2 benchmark, 2026-05-12](./docs/benchmarks/v2-benchmark-2026-05-12.md)
-
-The May 12 run was performed after stopping the older in-memory MCP process and
-verifying the global launcher returned `serverInfo.version=0.2.0`.
+- [v3.6 Pi Agent benchmark, 2026-05-19](./docs/benchmarks/v36-pi-agent-benchmark-2026-05-19.md)
+- [v3.6 agent routing smoke, 2026-05-19](./docs/benchmarks/v36-agent-routing-smoke-2026-05-19.md)
 
 Method:
 
-- **A** = counterfactual `Codex-only` baseline with normalized cost index fixed at `1.00`
-- **B** = `CodexSaver` mode with the live router and DeepSeek worker
+- **A** = counterfactual `Codex-only` baseline using the same task text and file scope
+- **B** = `CodexSaver` v3.6 orchestration through Agent Registry and the default Pi Agent
 - latency is wall-clock time for the real CodexSaver execution
-- savings come from the current `CostEstimator`, so this is a reproducible routing benchmark, not invoice-grade billing data
-
-V2 bounded work-packet summary:
-
-- `5 / 5` tasks succeeded
-- `4 / 5` used the DeepSeek worker path
-- `1 / 5` used v2 preflight because the task was already satisfied
-- average normalized cost index was `0.44`
-- average estimated savings were `56%`
+- savings are estimated from measured worker usage plus the current cost estimator, so this is a reproducible engineering benchmark, not invoice-grade billing data
 
 Summary:
 
-- All 5 tasks were typical low-risk development chores: explanation, docs, tests, and README maintenance
-- All 5 delegated successfully after using natural low-risk phrasing
-- Average live latency was `6.18s`
-- Average estimated savings were `48.4%`
-- Average normalized cost moved from `1.00` to `0.52`
-- Estimated relative reduction was `48.0%`
+- `5 / 5` real low-risk tasks succeeded
+- `5 / 5` routed through `pi_agent`
+- average worker participation was `100%`
+- average latency was `18.63s`
+- measured worker cost was `$0.00968315`
+- estimated Codex-only baseline cost was `$0.47955374`
+- estimated savings were about `98%`
+- quality score was `1.0` across the benchmark because all returned outputs were structurally valid and reviewable
 
-| Task | Type | Route | Latency | A: Codex-only Cost Index | B: CodexSaver Cost Index | Estimated Savings | Output Shape |
-|---|---|---|---:|---:|---:|---:|---|
-| Explain router logic | `explain` | `deepseek` | `2.13s` | `1.00` | `0.55` | `45%` | read-only summary |
-| Document router module | `docs` | `deepseek` | `3.13s` | `1.00` | `0.55` | `45%` | 1-file patch |
-| Add cost tests | `write_tests` | `deepseek` | `9.29s` | `1.00` | `0.55` | `45%` | test patch |
-| Explain verifier flow | `explain` | `deepseek` | `2.30s` | `1.00` | `0.55` | `45%` | read-only summary |
-| Update install docs | `docs` | `deepseek` | `14.06s` | `1.00` | `0.38` | `62%` | README patch |
+| Task | Type | Route | Worker | Latency | Quality | Output Shape |
+|---|---|---|---|---:|---:|---|
+| Explain config loader | read-only explain | `pi_agent` | `pi-agent-default` | measured live | `1.0` | concise summary |
+| Review performance hot spots | read-only review | `pi_agent` | `pi-agent-default` | measured live | `1.0` | prioritized notes |
+| Summarize installer flow | read-only docs | `pi_agent` | `pi-agent-default` | measured live | `1.0` | implementation summary |
+| Explain registry routing | read-only explain | `pi_agent` | `pi-agent-default` | measured live | `1.0` | architecture summary |
+| Review orchestrator risks | read-only review | `pi_agent` | `pi-agent-default` | measured live | `1.0` | risk notes |
 
 ![Five-task benchmark](./assets/ab-test-benchmark.svg)
 
@@ -834,10 +799,10 @@ Lower bars mean lower estimated Codex spend.
 
 Interpretation:
 
-- Read-only explain tasks were the fastest, cleanest wins
-- Small docs edits delegated well and returned compact, reviewable patches
-- Test generation had higher latency than explanation, but still stayed in the low-risk savings band
-- Larger-context documentation work produced the biggest estimated savings because the Codex-only context cost would be higher
+- Read-only specialist orchestration is the cleanest v3.6 advantage: high worker participation, easy review, and almost no merge risk
+- Pi Agent gives CodexSaver a real local worker without hardcoding one model provider into the router
+- Codex still owns final judgment, but CodexSaver can now do the cheap scanning, explaining, and review drafting work first
+- Historical v2 DeepSeek-provider benchmarks remain in `docs/benchmarks/` for comparison, but v3.6's default path is Pi Agent-first orchestration
 
 ---
 
@@ -894,9 +859,11 @@ User
 Codex
   ↓ MCP tool call
 CodexSaver
+  ├─ Agent Registry
+  ├─ Agent Router
   ├─ Router
   ├─ Context Packer
-  ├─ Worker LLM Provider
+  ├─ Pi Agent Worker
   ├─ Verifier
   └─ Cost Estimator
   ↓
@@ -905,9 +872,11 @@ Codex review / apply / finalize
 
 Core modules:
 
+- `AgentRegistry`: discover Pi Agent and local worker Agent Cards
+- `AgentRouter`: score workers by capability, cost, load, and fit
 - `Router`: classify tasks and assign risk
 - `ContextPacker`: bound file context before delegation
-- `ProviderClient`: call the configured worker model
+- `PiAgentClient`: call the default local Pi Agent worker
 - `Verifier`: validate output shape, protected paths, and suggested commands
 - `CostEstimator`: estimate relative savings bands
 - `WorkPacketRuntime`: apply worker patches in a sandbox and run allowlisted checks

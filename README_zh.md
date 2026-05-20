@@ -514,19 +514,30 @@ git clone https://github.com/fendouai/CodexSaver
 cd CodexSaver
 
 python -m pip install -e .
+npm install -g @earendil-works/pi-coding-agent
+codexsaver auth set --provider deepseek --api-key YOUR_DEEPSEEK_API_KEY
 codexsaver install
 codexsaver doctor --workspace .
 codexsaver agents list --workspace .
+codexsaver orchestrate "Explain config loader logic and review performance" --files codexsaver/config.py --workspace .
 ```
 
-这就够了。`codexsaver install` 会把 CodexSaver 写入全局 Codex MCP 配置
-`~/.codex/config.toml`，并指向一个稳定启动入口：
+这就是默认 v3.6 路径。`codexsaver auth set --provider deepseek ...` 会同时为
+CodexSaver 和 Pi Agent 保存 key：
+
+- `~/.codexsaver/config.json`
+- `~/.pi/agent/auth.json`
+
+两个文件都会以 `0600` 权限写入。`codexsaver install` 会把 CodexSaver 写入
+全局 Codex MCP 配置 `~/.codex/config.toml`，并指向稳定启动入口：
 `~/.codexsaver/codexsaver_mcp.py`。
 
 之后任意 Codex 工作区都可以调用：
 
 ```text
 codexsaver.delegate_task
+codexsaver.orchestrate_task
+codexsaver.run_specialist
 ```
 
 只有当你想写入当前仓库自己的 `.codex/config.toml` 时，才需要使用：
@@ -537,8 +548,15 @@ codexsaver install --project
 
 ### Provider 配置
 
-v3 通过 Agent Card 使用 Pi Agent。Provider 配置仍然保留给 v1/v2 的
-`delegate_task` 和 `delegate_work_packet` 通道。切换这条 provider-backed 通道只需要改一个参数：
+v3.6 通过 Agent Card 使用 Pi Agent。上面保存的 DeepSeek key 会被默认 Pi Agent
+命令使用：
+
+```bash
+pi --provider deepseek --model deepseek-v4-flash --mode json --no-session -p "Say ok"
+```
+
+Provider 配置仍然保留给 v1/v2 的 `delegate_task` 和 `delegate_work_packet` 通道。
+切换这条 provider-backed 通道只需要改一个参数：
 
 ```bash
 codexsaver auth set --provider openai --api-key YOUR_API_KEY --model gpt-4o-mini
@@ -609,13 +627,13 @@ codexsaver doctor --workspace .
 如果 Codex 已经打开了这个仓库，你可以直接发：
 
 ```text
-帮我为 CodexSaver 保存 worker provider API key，运行 `codexsaver auth set --provider deepseek --api-key ...`，然后运行 `codexsaver install` 和 `codexsaver doctor --workspace .`，告诉我是否已经就绪。
+如果需要请先 clone CodexSaver，用 `python -m pip install -e .` 安装它，用 `npm install -g @earendil-works/pi-coding-agent` 安装 Pi Agent，再用 `codexsaver auth set --provider deepseek --api-key ...` 保存我的 DeepSeek key，然后运行 `codexsaver install`、`codexsaver doctor --workspace .` 和 `codexsaver agents list --workspace .`。
 ```
 
 如果你只想做项目级安装：
 
 ```text
-帮我为 CodexSaver 保存 worker provider API key，并只把 CodexSaver 安装到当前仓库，运行 `codexsaver auth set --provider deepseek --api-key ...`、`codexsaver install --project`，然后运行 `codexsaver doctor --workspace .` 并总结结果。
+如果需要请先 clone CodexSaver，安装 CodexSaver 和 Pi Agent，用 `codexsaver auth set --provider deepseek --api-key ...` 保存我的 DeepSeek key，只为当前仓库运行 `codexsaver install --project`，然后运行 `codexsaver doctor --workspace .` 和 `codexsaver agents list --workspace .` 并总结结果。
 ```
 
 这里的“就绪”指的是：
@@ -623,6 +641,8 @@ codexsaver doctor --workspace .
 - `~/.codex/config.toml` 包含全局 `codexsaver` MCP server，或仓库里存在 `.codex/config.toml`
 - 全局安装时存在 `~/.codexsaver/codexsaver_mcp.py`
 - provider 配置来自环境变量或 `~/.codexsaver/config.json`
+- Pi Agent 已安装，并且可以通过 `pi` 命令访问
+- DeepSeek key 已保存到 Pi 的 `~/.pi/agent/auth.json`
 - compression 配置来自 `~/.codexsaver/config.json`
 - `codexsaver doctor --workspace .` 报告 `CodexSaver is ready`
 
@@ -667,32 +687,33 @@ codexsaver delegate "添加单元测试" --files src/user/service.ts --workspace
 
 ---
 
-## 已验证的 v2 安装流程
+## 已验证的 v3.6 安装流程
 
-基于 2026 年 5 月 12 日、editable 安装、全局 launcher 和本地 key 流程的实测结果：
+基于 2026 年 5 月 20 日、editable 安装、Pi Agent、全局 launcher 和本地 DeepSeek key 流程的实测结果：
 
 | 检查项 | 命令 | 结果 |
 |---|---|---|
-| Editable 安装 | `python -m pip install -e .` | 安装 `codexsaver-0.2.0` |
-| 全量测试 | `PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider` | `97 passed in 0.41s` |
-| 全局安装 | `codexsaver install --workspace .` | 全局配置指向 `~/.codexsaver/codexsaver_mcp.py` |
-| 本地 provider 保存 | `codexsaver auth set --provider deepseek --api-key ...` | 已保存到 `~/.codexsaver/config.json` |
-| 压缩配置 | `codexsaver compression set --enabled true --level full` | 已保存到 `~/.codexsaver/config.json` |
-| 工作区诊断 | `codexsaver doctor --workspace .` | `provider_api_key_source=local_config:deepseek`，工作区已就绪 |
-| 全局 launcher 检查 | 用 MCP `initialize` 调用 `~/.codexsaver/codexsaver_mcp.py` | 返回 `serverInfo.version=0.2.0` |
-| v2 MCP 工具检查 | MCP `tools/list` | 包含 `delegate_work_packet` |
-| v2 preflight 检查 | MCP `tools/call delegate_work_packet` | 返回 `preflight_satisfied=true` |
+| 克隆源码 | `git clone https://github.com/fendouai/CodexSaver` | 先获取源码 |
+| Editable 安装 | `python -m pip install -e .` | 安装 `codexsaver` CLI |
+| Pi Agent 安装 | `npm install -g @earendil-works/pi-coding-agent` | 安装 `pi` CLI |
+| key 持久化 | `codexsaver auth set --provider deepseek --api-key ...` | 同时写入 `~/.codexsaver/config.json` 和 `~/.pi/agent/auth.json` |
+| 全局 MCP 安装 | `codexsaver install` | 全局配置指向 `~/.codexsaver/codexsaver_mcp.py` |
+| 工作区诊断 | `codexsaver doctor --workspace .` | 报告 CodexSaver、Pi Agent 和 key 是否就绪 |
+| Agent 发现 | `codexsaver agents list --workspace .` | 发现 `pi-agent-default` |
+| v3.6 live smoke | `codexsaver orchestrate "Explain config loader logic and review performance" --files codexsaver/config.py --workspace .` | `route=pi_agent`，`status=success` |
+| 全量测试 | `python -m pytest -q -p no:cacheprovider` | 当前测试通过 |
 
 推荐流程就是：
 
-1. 保存一次 key
-2. 安装 editable 包和全局 launcher
-3. 用 `doctor` 确认就绪
-4. 如果 Codex 窗口在安装前已经打开，需要停止或重载旧 MCP 进程
-5. 之后直接发起真实委派调用，不再重复导出 API key
+1. 克隆仓库。
+2. 安装 CodexSaver 和 Pi Agent。
+3. 保存一次 DeepSeek key。
+4. 安装全局 MCP launcher。
+5. 用 `doctor` 和 `agents list` 确认就绪。
+6. 之后直接使用 v3.6 Pi Agent 编排，不再重复导出 API key。
 
 如果已经打开的 Codex 窗口仍在使用旧 MCP 进程，请停止或重载那个 MCP server。
-全局 launcher 是 v2 的事实来源，会返回 `serverInfo.version=0.2.0`。
+全局 launcher 是事实来源，会返回 `serverInfo.version=0.3.6`。
 
 ---
 
@@ -717,73 +738,38 @@ codexsaver delegate "添加单元测试" --files src/user/service.ts --workspace
 
 ## 配置完成后的使用占比
 
-在配置完成之后，我统计了这轮工作会话里真正进入“模型路由决策”的任务。
-像 `pytest`、`git`、`install`、`doctor`、README 编辑这类纯本地步骤都不计入比例。
+## v3.6 五个真实任务基准
 
-结果是：
+最新 v3.6 报告：
 
-- `DeepSeek`：`7 / 8 = 87.5%`
-- `Codex`：`1 / 8 = 12.5%`
-
-为什么不是 100%？
-
-有一个测试任务最初包含了 `production logic` 这类措辞。
-这会触发路由器有意设计的高风险关键词保护，从而把任务交回 Codex。
-这不是失败，而是保护逻辑按预期生效。
-
-如果只看后面那组经过标准化措辞处理的“五任务基准”，则结果是：
-
-- `DeepSeek`：`5 / 5 = 100%`
-- `Codex`：`0 / 5 = 0%`
-
-结论很直接：
-
-- 在真实使用里，CodexSaver 默认会把大多数低风险小任务交给 DeepSeek
-- 但它仍然保留了严格的回退路径，用来处理高风险表述和受保护域
-
----
-
-## 五个小任务的 A/B 对比
-
-最新 v2 报告：
-
-- [v2 重启确认，2026-05-12](./docs/benchmarks/v2-restart-confirmation-2026-05-12.md)
-- [v2 基准测试，2026-05-12](./docs/benchmarks/v2-benchmark-2026-05-12.md)
-
-5 月 12 日这轮测试是在停止旧的内存 MCP 进程之后执行的，并且已经确认全局
-launcher 返回 `serverInfo.version=0.2.0`。
+- [v3.6 Pi Agent 基准测试，2026-05-19](./docs/benchmarks/v36-pi-agent-benchmark-2026-05-19.md)
+- [v3.6 Agent 路由 smoke 测试，2026-05-19](./docs/benchmarks/v36-agent-routing-smoke-2026-05-19.md)
 
 方法说明：
 
-- **A** = 反事实的 `Codex-only` 基线，归一化成本指数固定为 `1.00`
-- **B** = `CodexSaver` 模式，真实经过当前路由器和 DeepSeek worker 执行
-- 延迟统计的是 CodexSaver 实时调用的墙钟时间
-- 节省比例来自当前 `CostEstimator` 的估算，所以这是一个可复现的路由基准，不是账单级财务数据
-
-v2 bounded work-packet 总结：
-
-- `5 / 5` 任务成功
-- `4 / 5` 走 DeepSeek worker 路径
-- `1 / 5` 走 v2 preflight，因为任务已经满足
-- 平均归一化成本指数是 `0.44`
-- 平均预计节省是 `56%`
+- **A** = 反事实 `Codex-only` 基线，使用相同任务文本和文件范围估算
+- **B** = `CodexSaver` v3.6，通过 Agent Registry 和默认 Pi Agent 真实编排
+- 延迟统计的是 CodexSaver 实时执行的墙钟时间
+- 节省比例来自实测 worker usage 和当前成本估算器，所以这是工程基准，不是账单级财务数据
 
 文字总结：
 
-- 这 5 个任务都属于典型的低风险开发小任务：解释代码、补文档、补测试、维护 README
-- 在使用更自然的低风险表述后，5 个任务全部成功委派
-- 实测平均延迟是 `6.18s`
-- 平均预计节省是 `48.4%`
-- 从归一化成本看，平均成本指数从 `1.00` 降到 `0.52`
-- 预计相对下降 `48.0%`
+- `5 / 5` 个真实低风险任务成功
+- `5 / 5` 个任务路由到 `pi_agent`
+- 平均 worker 参与率 `100%`
+- 平均延迟 `18.63s`
+- Pi/DeepSeek worker 实测成本 `$0.00968315`
+- 估算 Codex-only 基线成本 `$0.47955374`
+- 估算节省约 `98%`
+- 质量分 `1.0`，因为所有返回结果都结构有效、可审查
 
-| 任务 | 类型 | 路由 | 延迟 | A: Codex-only 成本指数 | B: CodexSaver 成本指数 | 预计节省 | 输出形态 |
-|---|---|---|---:|---:|---:|---:|---|
-| Explain router logic | `explain` | `deepseek` | `2.13s` | `1.00` | `0.55` | `45%` | 只读总结 |
-| Document router module | `docs` | `deepseek` | `3.13s` | `1.00` | `0.55` | `45%` | 单文件 patch |
-| Add cost tests | `write_tests` | `deepseek` | `9.29s` | `1.00` | `0.55` | `45%` | 测试 patch |
-| Explain verifier flow | `explain` | `deepseek` | `2.30s` | `1.00` | `0.55` | `45%` | 只读总结 |
-| Update install docs | `docs` | `deepseek` | `14.06s` | `1.00` | `0.38` | `62%` | README patch |
+| 任务 | 类型 | 路由 | Worker | 延迟 | 质量 | 输出形态 |
+|---|---|---|---|---:|---:|---|
+| Explain config loader | 只读解释 | `pi_agent` | `pi-agent-default` | 实测 live | `1.0` | 简洁总结 |
+| Review performance hot spots | 只读评审 | `pi_agent` | `pi-agent-default` | 实测 live | `1.0` | 优先级建议 |
+| Summarize installer flow | 只读文档 | `pi_agent` | `pi-agent-default` | 实测 live | `1.0` | 实现总结 |
+| Explain registry routing | 只读解释 | `pi_agent` | `pi-agent-default` | 实测 live | `1.0` | 架构总结 |
+| Review orchestrator risks | 只读评审 | `pi_agent` | `pi-agent-default` | 实测 live | `1.0` | 风险说明 |
 
 ![五任务基准图](./assets/ab-test-benchmark.svg)
 
@@ -793,16 +779,16 @@ v2 bounded work-packet 总结：
 
 结果解读：
 
-- 只读解释型任务是最快、最稳定的收益来源
-- 小型文档修改也很适合下放，而且会返回紧凑、易审查的 patch
-- 测试生成的延迟高于 explain，但仍然保持在低风险节省区间
-- 上下文更大的文档任务节省更高，因为 `Codex-only` 模式下的上下文成本更高
+- 只读 specialist 编排是 v3.6 最清晰的优势区：参与率高、审查简单、几乎没有合并风险
+- Pi Agent 让 CodexSaver 拥有真实本机 worker，而不是把路由器写死到某一个模型 provider
+- Codex 仍然负责最终判断，但扫描、解释、初步评审这类便宜工作可以先交给 CodexSaver
+- 历史 v2 DeepSeek provider 基准仍保留在 `docs/benchmarks/`，但 v3.6 默认路径是 Pi Agent 优先
 
 ---
 
 ## 路由规则
 
-### 适合委派给 DeepSeek 的任务
+### 适合委派给 Pi Agent / worker 的任务
 
 - 仓库扫描和代码搜索
 - 代码解释与总结
@@ -841,7 +827,7 @@ CodexSaver 问的不是：
 - 敏感域里的写操作，哪怕改动很小，风险也会迅速升高
 - 一旦任务模糊，默认交回 Codex，而不是默认下放
 
-这也是为什么 `Explain auth code` 还有机会走 DeepSeek，而 `Refactor auth service`
+这也是为什么 `Explain auth code` 还有机会走 Pi Agent，而 `Refactor auth service`
 必须留给 Codex。
 
 ---
@@ -854,9 +840,11 @@ User
 Codex
   ↓ MCP tool call
 CodexSaver
+  ├─ Agent Registry
+  ├─ Agent Router
   ├─ Router
   ├─ Context Packer
-  ├─ Worker LLM Provider
+  ├─ Pi Agent Worker
   ├─ Verifier
   └─ Cost Estimator
   ↓
@@ -865,9 +853,11 @@ Codex review / apply / finalize
 
 核心模块：
 
+- `AgentRegistry`：发现 Pi Agent 和本机 Agent Card
+- `AgentRouter`：按能力、成本、负载和上下文适配度为 worker 打分
 - `Router`：任务分类和风险判断
 - `ContextPacker`：在委派前裁剪文件上下文
-- `ProviderClient`：调用已配置的 worker 模型
+- `PiAgentClient`：调用默认本机 Pi Agent worker
 - `Verifier`：检查返回结构、受保护路径和建议命令
 - `CostEstimator`：估算相对节省区间
 - `WorkPacketRuntime`：在沙箱中 apply worker patch，并运行 allowlisted checks
