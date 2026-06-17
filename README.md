@@ -2,10 +2,6 @@
 
 > Make Codex cheaper without making it dumber.
 
-<p align="center">
-  <a href="./README_zh.md"><strong>中文文档</strong></a>
-</p>
-
 ![CodexSaver](./CodexSaver.png)
 
 CodexSaver is an MCP tool that turns Codex into a cost-aware router.

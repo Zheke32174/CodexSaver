@@ -264,7 +264,7 @@ If Codex frequently rewrites worker patches, the worker isn't truly doing more w
 
 **Phase 1: Work Packet Contract**
 - `DelegateWorkPacketInput` / `Output` schemas
--强化 `allowed_files` / `acceptance_criteria` / `checks`
+- Enforce `allowed_files` / `acceptance_criteria` / `checks`
 - Codex still calls worker in one shot
 
 **Phase 2: ACI Read Tools**
