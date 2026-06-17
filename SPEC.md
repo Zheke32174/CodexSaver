@@ -2,7 +2,7 @@
 
 ## 1. Concept & Vision
 
-**CodexSaver** is a cost-aware AI coding router delivered as an MCP (Model Context Protocol) server. Codex calls it as a tool (`codexsaver.delegate_task`) rather than spawning a subprocess. This keeps Codex's心智模型 clean: CodexSaver is not another agent — it is Codex's cost-saving tool.
+**CodexSaver** is a cost-aware AI coding router delivered as an MCP (Model Context Protocol) server. Codex calls it as a tool (`codexsaver.delegate_task`) rather than spawning a subprocess. This keeps Codex's mental model clean: CodexSaver is not another agent — it is Codex's cost-saving tool.
 
 The philosophy: _don't replace Codex, shrink it_. Let cheap models do the work; let expensive models do the thinking.
 
