@@ -34,6 +34,23 @@ git checkout main && git merge upstream/main
 
 The prose changes are localized; rebases should be clean unless upstream renames `README_zh.md` or rewrites SPEC.md's intro paragraph.
 
+## Known pre-existing test failures (NOT caused by this fork)
+
+Verified 2026-06-16 by running the full pytest suite against both this fork's `main`
+(commit `3ad1d68`) and the unmodified base (`fe44dc1`): the same 2 tests fail in
+both. Translation diff is prose-only (5 files: README/SPEC/docs/SPEC_v2/FORK_NOTES
++ README_zh.md deletion) — no functional code touched.
+
+- `tests/test_config.py::test_save_and_resolve_openai_provider`
+- `tests/test_engine.py::TestCodexSaverEngine::test_delegate_task_runs_verification_commands`
+  → `AssertionError: 'needs_codex' == 'success'`
+
+Both look like engine-state-machine regressions in upstream. Worth raising as
+a `fendouai/CodexSaver` issue rather than fixing in the fork (would conflict
+with future upstream merges).
+
+Full suite: **135/137 passing**.
+
 ## How CodexSaver is used in this hive
 
 - Installed editable per `pyproject.toml`.
