@@ -1,0 +1,36 @@
+apiVersion: modos.pleiades/v1alpha1
+kind: Component
+metadata:
+  name: codex-session-preservation
+  repository: Zheke32174/CodexSaver
+  visibility: private
+  lifecycle: experimental
+  defaultBranch: main
+spec:
+  roles:
+    - coding-session-preservation
+    - workspace-handoff-capture
+    - recovery-context-source
+  authority: none
+  inputs:
+    - session-events
+    - changed-file-metadata
+    - task-and-handoff-context
+  outputs:
+    - recoverable-session-snapshots
+    - handoff-records
+    - provenance-linked-workspace-state
+  capabilitiesProvided:
+    - session.capture
+    - handoff.context.persist
+    - workspace.recovery.propose
+  capabilitiesRequired:
+    - workspace.read.scoped
+    - memory.episodic.append
+    - artifact.snapshot.write
+  dataClasses:
+    - private
+    - internal
+  failurePolicy: read-only
+  promotionPolicy: evidence-gated
+  notes: Saved context is evidence and recovery material, not an automatic source of canonical code or authority.
