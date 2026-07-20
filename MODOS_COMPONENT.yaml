@@ -1,0 +1,54 @@
+apiVersion: modos.pleiades/v1alpha1
+kind: Component
+metadata:
+  name: codexsaver-bounded-delegation-router
+  repository: Zheke32174/CodexSaver
+  visibility: public
+  lifecycle: experimental
+  defaultBranch: main
+  labels:
+    modos.pleiades/subsystem: cognition-memory
+    modos.pleiades/organ-class: cost-aware-mcp-delegation-router
+spec:
+  roles:
+    - cost-aware-task-router
+    - read-only-specialist-orchestrator
+    - bounded-patch-proposal-coordinator
+    - delegated-result-verifier
+  authority: proposal
+  inputs:
+    - codex-task-intent
+    - bounded-work-packet
+    - repository-context
+    - configured-worker-provider
+  outputs:
+    - visible-routing-decision
+    - delegated-worker-result
+    - verification-evidence
+    - bounded-patch-proposal
+  capabilitiesProvided:
+    - task.route.cost-aware@v1
+    - worker.delegate.bounded@v1
+    - patch.verify.proposal@v1
+  capabilitiesRequired:
+    - agent.worker.local-or-provider@v1
+    - sandbox.patch.isolated@v1
+    - review.codex.final@v1
+  dataClasses:
+    - public
+    - internal
+    - private
+    - untrusted
+  failurePolicy: fail-closed
+  promotionPolicy: evidence-gated
+  relations:
+    - type: supports
+      targetRef: repo:Zheke32174/pleiades
+      scope: build
+      required: false
+  notes: >-
+    CodexSaver routes low-risk, bounded work to cheaper specialists and returns
+    visible routing decisions, worker results, verification evidence, and patch
+    proposals. Protected domains, ambiguity, final review, and promotion remain
+    with Codex or the steward. A worker result never becomes production authority
+    merely because it passed a local verifier.
