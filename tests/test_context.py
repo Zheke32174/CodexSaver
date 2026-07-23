@@ -67,12 +67,12 @@ class TestContextPacker:
         ) as outside:
             outside.write("TOP SECRET")
             outside_path = outside.name
-        try:
-            contexts = ContextPacker(workspace=workspace).load([outside_path])
-            assert "refused context path" in contexts[0].content
-            assert "TOP SECRET" not in contexts[0].content
-        finally:
-            os.unlink(outside_path)
+            try:
+                contexts = ContextPacker(workspace=workspace).load([outside_path])
+                assert "refused context path" in contexts[0].content
+                assert "TOP SECRET" not in contexts[0].content
+            finally:
+                os.unlink(outside_path)
 
     def test_parent_traversal_is_refused_without_reading(self):
         with tempfile.TemporaryDirectory() as parent:
