@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import os
 import sys
-import tempfile
 
-import pytest
 from codexsaver.verifier import Verifier, REQUIRED_KEYS, VALID_STATUS
 from codexsaver.schema import RouteDecision
 
@@ -43,7 +40,9 @@ class TestVerifier:
         v = self.verifier.verify(result, decision)
         assert v.ok is True
         assert v.fallback_to_codex is False
-        assert "print('ok')" in v.executed_commands[0]["command"]
+        assert v.executed_commands[0]["exit_code"] == 0
+        assert v.executed_commands[0]["stdout"].strip() == "ok"
+        assert len(v.executed_commands[0]["argv_sha256"]) == 64
 
     def test_verify_missing_required_key(self):
         result = self.make_result()
@@ -103,18 +102,18 @@ class TestVerifier:
         assert any("verification commands" in w for w in v.warnings)
         assert v.executed_commands == []
 
-    def test_verify_runs_commands_in_workspace(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = self.make_result(commands_to_run=[
-                f'"{sys.executable}" -c "import pathlib; print(pathlib.Path.cwd().name)"'
-            ])
-            decision = self.make_decision()
-            v = self.verifier.verify(result, decision, workspace=tmpdir)
-            assert v.ok is True
-            assert v.executed_commands[0]["exit_code"] == 0
-            assert os.path.basename(tmpdir) in v.executed_commands[0]["stdout"]
+    def test_verify_refuses_workspace_introspection(self, tmp_path):
+        result = self.make_result(commands_to_run=[
+            f'"{sys.executable}" -c "import pathlib; print(pathlib.Path.cwd().name)"'
+        ])
+        decision = self.make_decision()
+        v = self.verifier.verify(result, decision, workspace=str(tmp_path))
+        assert v.ok is False
+        assert v.fallback_to_codex is True
+        assert "refused" in v.reason.lower()
+        assert v.executed_commands == []
 
-    def test_verify_fails_when_command_fails(self):
+    def test_verify_refuses_arbitrary_inline_failure_code(self):
         result = self.make_result(commands_to_run=[
             f'"{sys.executable}" -c "raise SystemExit(3)"'
         ])
@@ -122,15 +121,15 @@ class TestVerifier:
         v = self.verifier.verify(result, decision)
         assert v.ok is False
         assert v.fallback_to_codex is True
-        assert "Verification command failed" in v.reason
-        assert v.executed_commands[0]["exit_code"] == 3
+        assert "refused" in v.reason.lower()
+        assert v.executed_commands == []
 
     def test_verify_rejects_invalid_command_entry(self):
         result = self.make_result(commands_to_run=[""])
         decision = self.make_decision()
         v = self.verifier.verify(result, decision)
         assert v.ok is False
-        assert "commands_to_run" in v.reason
+        assert "refused" in v.reason.lower()
 
     def test_verify_all_valid_statuses(self):
         for status in VALID_STATUS:
