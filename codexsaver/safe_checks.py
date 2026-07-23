@@ -17,7 +17,7 @@ _SECRET_PATTERNS = [
 ]
 _ALLOWED_PYTEST_FLAGS = {
     "-q", "--quiet", "-x", "--exitfirst", "--disable-warnings",
-    "--strict-markers", "--strict-config",
+    "--strict-markers", "--strict-config", "-s",
 }
 _MAX_COMMAND_CHARS = 4096
 _MAX_OUTPUT_BYTES = 64 * 1024
@@ -29,10 +29,12 @@ class CheckRejected(ValueError):
 
 
 def run_provider_check(command: Any, workspace: str) -> Dict[str, Any]:
-    """Run one narrowly approved provider-suggested verification recipe.
+    """Run one narrowly approved verification recipe without a shell.
 
-    This function never invokes a shell. Unsupported or ambiguous suggestions
-    fail closed. Returned output is redacted and content-addressed.
+    The same executor is used for provider suggestions and steward-configured
+    work-packet checks. Unsupported recipes fail closed. The child receives a
+    minimal environment, bounded time/output, and returns redacted digest
+    receipts rather than unbounded host transcripts.
     """
     argv = _normalize(command)
     _validate_recipe(argv)
@@ -83,12 +85,12 @@ def _validate_recipe(argv: List[str]) -> None:
     if executable in {"pytest", "py.test"}:
         _validate_pytest(argv[1:])
         return
-    raise CheckRejected("provider-suggested executable is not approved")
+    raise CheckRejected("verification executable is not approved")
 
 
 def _validate_python(argv: List[str]) -> None:
     if len(argv) >= 3 and argv[1] == "-c":
-        _validate_literal_print(argv[2])
+        _validate_inline_python(argv[2])
         if len(argv) != 3:
             raise CheckRejected("inline Python recipe has unexpected arguments")
         return
@@ -101,18 +103,72 @@ def _validate_python(argv: List[str]) -> None:
     raise CheckRejected("Python verification recipe is not approved")
 
 
-def _validate_literal_print(source: str) -> None:
+def _validate_inline_python(source: str) -> None:
     try:
         tree = ast.parse(source, mode="exec")
     except SyntaxError as exc:
         raise CheckRejected("inline Python is invalid") from exc
+    if _is_literal_print(tree):
+        return
+    if _is_import_assertion(tree):
+        return
+    raise CheckRejected("inline Python recipe is not an approved literal check")
+
+
+def _is_literal_print(tree: ast.Module) -> bool:
     if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Expr):
-        raise CheckRejected("inline Python recipe is not a literal print")
+        return False
     call = tree.body[0].value
-    if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name) or call.func.id != "print":
-        raise CheckRejected("inline Python recipe is not a literal print")
-    if call.keywords or not all(isinstance(arg, ast.Constant) for arg in call.args):
-        raise CheckRejected("inline Python print arguments must be literals")
+    return (
+        isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Name)
+        and call.func.id == "print"
+        and not call.keywords
+        and all(isinstance(arg, ast.Constant) for arg in call.args)
+    )
+
+
+def _is_import_assertion(tree: ast.Module) -> bool:
+    """Accept the legacy work-packet smoke shape only.
+
+    Example: ``import hello; assert hello.greet() == 'hello'``.
+    It executes workspace code, as pytest does, but cannot import os/sys,
+    inspect environment values, call builtins, pass arguments, assign values,
+    or perform multiple operations.
+    """
+    if len(tree.body) != 2:
+        return False
+    imported, assertion = tree.body
+    if not isinstance(imported, ast.Import) or len(imported.names) != 1:
+        return False
+    alias = imported.names[0]
+    if alias.asname is not None or not _safe_module_name(alias.name):
+        return False
+    if alias.name.split(".")[0] in {"os", "sys", "subprocess", "pathlib", "socket", "shutil"}:
+        return False
+    if not isinstance(assertion, ast.Assert) or assertion.msg is not None:
+        return False
+    test = assertion.test
+    if not isinstance(test, ast.Compare) or len(test.ops) != 1 or len(test.comparators) != 1:
+        return False
+    if not isinstance(test.ops[0], (ast.Eq, ast.NotEq, ast.Is, ast.IsNot)):
+        return False
+    if not isinstance(test.comparators[0], ast.Constant):
+        return False
+    call = test.left
+    if not isinstance(call, ast.Call) or call.args or call.keywords:
+        return False
+    function = call.func
+    return (
+        isinstance(function, ast.Attribute)
+        and isinstance(function.value, ast.Name)
+        and function.value.id == alias.name
+        and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", function.attr) is not None
+    )
+
+
+def _safe_module_name(value: str) -> bool:
+    return re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*", value) is not None
 
 
 def _validate_pytest(args: List[str]) -> None:
@@ -140,25 +196,33 @@ def _validate_relative_path(raw: str) -> None:
 
 
 def _clean_environment(workspace: Path) -> Dict[str, str]:
+    home = workspace / ".codexsaver-home"
     env: Dict[str, str] = {
         "PATH": os.environ.get("PATH", ""),
         "PYTHONNOUSERSITE": "1",
         "PYTHONDONTWRITEBYTECODE": "1",
-        "HOME": str(workspace / ".codexsaver-home"),
-        "USERPROFILE": str(workspace / ".codexsaver-home"),
+        "HOME": str(home),
+        "USERPROFILE": str(home),
         "NO_PROXY": "*",
         "no_proxy": "*",
+        "PIP_CONFIG_FILE": os.devnull,
     }
     if os.name == "nt":
         for key in ("SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"):
             if os.environ.get(key):
                 env[key] = os.environ[key]
-    Path(env["HOME"]).mkdir(mode=0o700, exist_ok=True)
+    home.mkdir(mode=0o700, exist_ok=True)
     return env
 
 
-def _receipt(argv: List[str], exit_code: int, stdout: bytes, stderr: bytes,
-             workspace: Path, timed_out: bool) -> Dict[str, Any]:
+def _receipt(
+    argv: List[str],
+    exit_code: int,
+    stdout: bytes,
+    stderr: bytes,
+    workspace: Path,
+    timed_out: bool,
+) -> Dict[str, Any]:
     return {
         "command": shlex.join(argv),
         "argv_sha256": _digest("\0".join(argv).encode("utf-8")),
