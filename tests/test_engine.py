@@ -6,6 +6,7 @@ import tempfile
 import pytest
 from unittest.mock import patch, MagicMock
 from codexsaver.engine import CodexSaverEngine, DEFAULT_CONSTRAINTS
+from codexsaver.schema import to_dict
 
 
 class TestCodexSaverEngine:
@@ -154,7 +155,7 @@ class TestCodexSaverEngine:
             task = mock_instance.complete_task.call_args[0][0]
             assert task.files == []
 
-    def test_workspace_is_forwarded_to_worker_and_verifier(self):
+    def test_workspace_is_local_but_worker_payload_is_redacted(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             sample = os.path.join(tmpdir, "sample.txt")
             with open(sample, "w") as f:
@@ -179,7 +180,9 @@ class TestCodexSaverEngine:
 
                 task = mock_instance.complete_task.call_args[0][0]
                 assert task.workspace == os.path.realpath(tmpdir)
-                assert task.files[0].path == os.path.realpath(sample)
+                assert task.files[0].path == "sample.txt"
+                assert to_dict(task)["workspace"] == "."
+                assert tmpdir not in str(to_dict(task))
                 assert result["verification"]["executed_commands"] == []
 
     def test_delegate_task_runs_verification_commands(self):
