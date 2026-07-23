@@ -27,7 +27,15 @@ jobs:
       - name: Compile source
         run: python -m compileall -q codexsaver cli.py codexsaver_mcp.py tests
       - name: Run tests
-        run: python -m pytest -q
+        run: python -m pytest -q > pytest.log 2>&1
+      - name: Upload pytest receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pytest-receipt-${{ github.sha }}
+          path: pytest.log
+          if-no-files-found: error
+          retention-days: 14
       - name: Build source and wheel distributions
         run: python -m build
       - name: Inspect package boundary
@@ -44,10 +52,13 @@ jobs:
           with zipfile.ZipFile(wheel) as archive:
               names = archive.namelist()
               assert any(name.endswith('codexsaver/context.py') for name in names)
+              assert any(name.endswith('codexsaver/schema.py') for name in names)
+              assert any(name.endswith('codexsaver/agent_registry.py') for name in names)
               assert any(name.endswith('.dist-info/METADATA') for name in names)
           with tarfile.open(sdist, 'r:gz') as archive:
               names = archive.getnames()
               assert any(name.endswith('/SECURITY.md') for name in names)
               assert any(name.endswith('/RELEASE_READINESS_CHECKPOINT.md') for name in names)
+              assert any(name.endswith('/tests/test_public_boundaries.py') for name in names)
           print('\n'.join(str(path) for path in artifacts))
           PY
