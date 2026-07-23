@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import subprocess
-from pathlib import Path
 from typing import Any, Dict, List
 
 from .router import PROTECTED_PATH_KEYWORDS
+from .safe_checks import CheckRejected, run_provider_check
 from .schema import RouteDecision, VerificationResult
 
 
@@ -42,6 +41,9 @@ class Verifier:
             return VerificationResult(False, True,
                 "Patch is too large for safe automatic delegation.", warnings, executed_commands)
         commands = worker_result.get("commands_to_run") or []
+        if not isinstance(commands, list):
+            return VerificationResult(False, True,
+                "commands_to_run must be a list.", warnings, executed_commands)
         if not commands:
             warnings.append("No verification commands suggested by worker.")
         else:
@@ -62,41 +64,43 @@ class Verifier:
     def _run_commands(self, commands: List[Any], workspace: str) -> Dict[str, Any]:
         results: List[Dict[str, Any]] = []
         warnings: List[str] = []
-        cwd = str(Path(workspace).resolve())
-        for command in commands:
-            if not isinstance(command, str) or not command.strip():
-                return {
-                    "ok": False,
-                    "reason": "commands_to_run must contain non-empty shell commands.",
-                    "results": results,
-                    "warnings": warnings,
-                }
-            completed = subprocess.run(
-                command,
-                cwd=cwd,
-                shell=True,
-                text=True,
-                capture_output=True,
-            )
-            result = {
-                "command": command,
-                "exit_code": completed.returncode,
-                "stdout": completed.stdout[-4000:],
-                "stderr": completed.stderr[-4000:],
+        if len(commands) > 8:
+            return {
+                "ok": False,
+                "reason": "Worker suggested too many verification commands.",
+                "results": results,
+                "warnings": warnings,
             }
-            results.append(result)
-            if completed.returncode != 0:
+        for command in commands:
+            try:
+                result = run_provider_check(command, workspace)
+            except CheckRejected as exc:
                 return {
                     "ok": False,
-                    "reason": f"Verification command failed: {command}",
+                    "reason": f"Provider-suggested check was refused: {exc}",
                     "results": results,
                     "warnings": warnings,
                 }
-            if completed.stderr.strip():
-                warnings.append(f"Verification command produced stderr: {command}")
+            results.append(result)
+            if result["timed_out"]:
+                return {
+                    "ok": False,
+                    "reason": "Verification check exceeded its time budget.",
+                    "results": results,
+                    "warnings": warnings,
+                }
+            if result["exit_code"] != 0:
+                return {
+                    "ok": False,
+                    "reason": "Verification check failed.",
+                    "results": results,
+                    "warnings": warnings,
+                }
+            if result["stderr"].strip():
+                warnings.append("Verification check produced redacted stderr.")
         return {
             "ok": True,
-            "reason": "Verification commands passed.",
+            "reason": "Approved verification checks passed.",
             "results": results,
             "warnings": warnings,
         }

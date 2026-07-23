@@ -5,79 +5,93 @@
 - Repository: `Zheke32174/CodexSaver`
 - Checkpoint branch: `release/public-boundary-v1`
 - Reviewed default head: `8c291b5c9760c09daf61877dac61477284e7a850`
-- Validated implementation head: `2903373334060ad4d09efbdbc4ee8a08619c2329`
-- Validation run: `29978810100`
+- Prior validated head: `a3289fbf8f1ef3c22e94795842b65081991f7c2c`
+- Prior validation run: `29978864346`
 - Related architecture draft: PR #1
 
 ## Last completed scope
 
-Workspace confidentiality, delegated-context path handling, provider-visible payload serialization, project Agent Card discovery, Python package metadata, security reporting, source-build validation, public release claims, licensing presence, and install/distribution boundary.
+Workspace confidentiality, delegated-context path handling, provider-visible
+payload serialization, Agent Card discovery, Python package metadata, source
+build validation, and provider-suggested verification-command containment.
 
 ## Findings resolved on this draft
 
-- Refused absolute context paths.
-- Refused parent traversal.
-- Refused symlinks resolving outside the declared workspace.
-- Kept provider-visible file identities workspace-relative.
-- Redacted absolute host workspace topology from serialized worker tasks and dry-run/work-packet payloads.
-- Replaced unsafe absolute or parent-traversing provider path-policy entries with explicit refusal markers.
-- Confined repository-configured Agent Card directories to the selected workspace.
-- Preserved explicitly trusted user/global Agent Card registries without exposing their absolute host paths in card provenance.
-- Added adversarial tests proving refused paths are not read, local topology is not serialized, and project Agent Card discovery cannot escape the workspace.
-- Added an explicit Python build backend and test dependency metadata.
-- Added a read-only exact-head workflow for compilation, tests, durable pytest receipts, wheel/sdist construction, and archive inspection.
-- Added public security and confidentiality guidance.
+- Refused absolute, parent-traversing, and outward-symlink context paths.
+- Kept provider-visible file and workspace identities relative.
+- Confined repository Agent Card discovery to the selected workspace.
+- Added explicit Python build and test metadata plus package inspection.
+- Removed `shell=True` from the simple delegation verifier.
+- Restricted provider-suggested checks to narrowly validated argv recipes.
+- Added command-count, argument, option, path, output, and timeout bounds.
+- Stripped inherited credential-bearing environment variables from checks.
+- Redacted workspace/home topology and common secret shapes from returned output.
+- Added content digests and byte counts for verification stdout/stderr.
+- Added adversarial tests for shell commands, inline Python, traversal, unsafe
+  pytest options, command chaining, and sensitive-output redaction.
 
 ## Validation receipts
 
-GitHub Actions run `29978810100` passed at exact implementation head `2903373334060ad4d09efbdbc4ee8a08619c2329`:
+Prior exact head `a3289fbf8f1ef3c22e94795842b65081991f7c2c`
+passed run `29978864346`: immutable read-only checkout, Python 3.12 install,
+source/test compilation, all 150 tests, durable pytest receipt, wheel/sdist
+construction, and package inspection.
 
-- immutable read-only checkout;
-- Python 3.12 dependency installation;
-- complete source and test compilation;
-- all 150 tests;
-- durable pytest receipt upload;
-- wheel and source-distribution construction;
-- package-boundary inspection for runtime modules, metadata, security policy, checkpoint ledger, and boundary tests.
-
-The preceding red run exposed two stale fixtures: one deleted its temporary workspace before using it, and one expected the retired absolute provider-visible file identity. Both were corrected without weakening the confidentiality boundary.
+The provider-command containment batch requires a new exact-head hosted receipt.
+No green conclusion is carried forward to the new head until that run passes.
 
 ## Changed conclusion
 
-The earlier `bounded context` claim was not true at the filesystem or serialization boundary. Absolute paths, traversal, outward symlinks, host workspace names, and repository-configured Agent Card directories could expose more local topology or files than the public claim implied.
+The earlier broader audit gate was materially justified: the simple delegation
+verifier executed worker-provided shell text with `shell=True`, no timeout or
+allowlist, and returned raw stdout/stderr. A compromised or mistaken provider
+could execute arbitrary local commands and expose local data through verifier
+evidence.
 
-The current source, test, and package boundary is now green. Release readiness remains on HOLD for external governance, credential/lifecycle fixtures, and a broader audit of command output, verifier evidence, worktree persistence, and future session/recovery state.
+That immediate provider-controlled execution path is repaired in this draft.
+The source/package classification is temporarily **HOLD pending exact-head CI**.
 
 ## Open blockers
 
-- The repository has no selected source license; none was invented.
-- No PyPI ownership, trusted publishing identity, or package-name availability has been verified.
-- No authenticated release, checksum set, provenance attestation, or consumer verification receipt exists.
-- Global install/update/rollback/removal behavior needs a disposable-environment lifecycle fixture.
-- Provider credential storage and configuration-file permissions need cross-platform fixture coverage.
-- Allowed-command stdout/stderr, verifier evidence, orchestration worktrees, patch aggregation records, and future session snapshots/recovery records require the same local-topology and sensitive-output audit.
-- Live hosted-provider behavior has not been exercised on this branch and requires explicit credentials and authorization.
-- Branch rules, secret scanning, push protection, private vulnerability reporting, immutable releases, and Action-pin enforcement require administrative verification.
-
-## Deferred items
-
-- Package publication authority.
-- Signed or attested release artifacts.
-- Registry publication.
-- Cross-platform lifecycle testing.
-- Live hosted-provider calls.
-- Stronger sandbox isolation and network egress controls beyond the current temporary-copy patch sandbox.
+- Work-packet `allowed_commands` still use raw shell strings with `shell=True`.
+  They are steward-provided rather than provider-selected, but still require a
+  typed recipe model, clean environment, network/process isolation decision,
+  redacted digest receipts, and migration tests.
+- Orchestration worktrees, patch aggregation records, transcript persistence,
+  and future session/recovery records still require the same topology and
+  sensitive-output audit.
+- The repository has no selected source license.
+- No PyPI ownership, trusted publishing identity, or package-name availability
+  has been verified.
+- No authenticated release, checksum set, provenance attestation, or consumer
+  verification receipt exists.
+- Global install/update/rollback/removal behavior needs a disposable fixture.
+- Provider credential storage and configuration-file permissions need
+  cross-platform fixture coverage.
+- Live hosted-provider behavior requires explicit credentials and authorization.
+- Repository security and immutable-release settings require administrative
+  verification.
 
 ## External comparison provenance
 
-Current serious agent-sandbox implementations emphasize repository-scoped mounts, isolated execution, separate persistent volumes, and explicit network/credential policy. CodexSaver now enforces the repository-scoped information boundary in serialized delegation, while stronger process/network isolation remains a future architecture gate rather than an overstated current capability.
+Current agent-sandbox practice favors repository-scoped filesystems, isolated
+execution, explicit network/credential policy, and provenance-bearing evidence.
+This batch narrows provider-suggested local checks to approved argv recipes with
+cleaned environment and redacted receipts. It does not claim network isolation.
 
-Current Python packaging guidance supports PEP 517/518 build metadata, wheel plus sdist construction, and testing the source-distribution boundary before publication. The draft follows that source/package validation flow without claiming registry publication.
+Current Python packaging guidance supports PEP 517/518 metadata, wheel plus sdist
+construction, and testing the sdist boundary before publication. The existing
+draft preserves that flow without claiming registry publication.
 
 ## Reconsideration triggers
 
-New commit, changed CI result, dependency or advisory change, changed provider/context flow, new public release claim, license decision, registry identity decision, completed lifecycle fixture, credential-storage fixture, sandbox/egress implementation, security incident, or explicit steward request.
+New head or CI result, command-policy change, work-packet recipe migration,
+sandbox/egress implementation, provider/session evidence change, license or
+registry decision, lifecycle fixture, security incident, or explicit steward
+request.
 
 ## Next action
 
-Audit allowed-command output, verifier evidence, orchestration worktree persistence, patch aggregation records, and future session/recovery surfaces for local topology or sensitive-data leakage; then design a disposable install/update/rollback/removal fixture before any publication decision.
+Obtain an exact-head compile/test/package receipt. Then replace work-packet shell
+strings with typed verification recipes and audit returned transcripts,
+orchestration worktrees, patch aggregation, and recovery/session state.
