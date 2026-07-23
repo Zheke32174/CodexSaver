@@ -5,6 +5,7 @@
 - Repository: `Zheke32174/CodexSaver`
 - Checkpoint branch: `release/public-boundary-v1`
 - Reviewed default head: `8c291b5c9760c09daf61877dac61477284e7a850`
+- Current implementation head: `4988b616ec009b2156e5313143a73a9decde9799`
 - Prior validated head: `a3289fbf8f1ef3c22e94795842b65081991f7c2c`
 - Prior validation run: `29978864346`
 - Related architecture draft: PR #1
@@ -13,7 +14,8 @@
 
 Workspace confidentiality, delegated-context path handling, provider-visible
 payload serialization, Agent Card discovery, Python package metadata, source
-build validation, and provider-suggested verification-command containment.
+build validation, provider-suggested verification containment, and active
+work-packet preflight/post-patch command containment.
 
 ## Findings resolved on this draft
 
@@ -21,14 +23,23 @@ build validation, and provider-suggested verification-command containment.
 - Kept provider-visible file and workspace identities relative.
 - Confined repository Agent Card discovery to the selected workspace.
 - Added explicit Python build and test metadata plus package inspection.
-- Removed `shell=True` from the simple delegation verifier.
-- Restricted provider-suggested checks to narrowly validated argv recipes.
-- Added command-count, argument, option, path, output, and timeout bounds.
+- Removed active `shell=True` execution from the simple delegation verifier.
+- Routed both provider-suggested and steward-configured work-packet checks through
+  one bounded argv recipe executor.
+- Added an idempotent import-time compatibility guard for the public
+  `PatchSandbox` API while preserving callers during the larger refactor.
+- Limited each check lane to eight approved recipes.
+- Added command, argv, option, path, output, and timeout bounds.
 - Stripped inherited credential-bearing environment variables from checks.
+- Disabled user-site Python and external pip configuration in check processes.
 - Redacted workspace/home topology and common secret shapes from returned output.
-- Added content digests and byte counts for verification stdout/stderr.
-- Added adversarial tests for shell commands, inline Python, traversal, unsafe
-  pytest options, command chaining, and sensitive-output redaction.
+- Added argv/stdout/stderr SHA-256 values and byte counts to check receipts.
+- Preserved the existing narrow work-packet smoke-test form through an AST-bound
+  `import module; assert module.function() == literal` recipe rather than
+  reopening arbitrary inline Python.
+- Added adversarial tests for shell commands, chaining, traversal, unsafe pytest
+  options, sensitive-output redaction, guard installation, and recipe-count
+  overflow.
 
 ## Validation receipts
 
@@ -37,61 +48,84 @@ passed run `29978864346`: immutable read-only checkout, Python 3.12 install,
 source/test compilation, all 150 tests, durable pytest receipt, wheel/sdist
 construction, and package inspection.
 
-The provider-command containment batch requires a new exact-head hosted receipt.
-No green conclusion is carried forward to the new head until that run passes.
+Provider-command containment head `8a0564302e53ce10aff723b0dca2679862e3a8a0`
+reached hosted tests in run `29990363788`; 148 tests passed and four stale
+expectations failed. Those expectations assumed arbitrary inline Python or the
+old raw command/error representation and were corrected without reopening shell
+authority.
+
+No workflow run is currently indexed for exact head
+`4988b616ec009b2156e5313143a73a9decde9799`. No green conclusion is carried
+forward until compile, complete tests, wheel/sdist construction, and archive
+inspection pass at that exact head.
 
 ## Changed conclusion
 
-The earlier broader audit gate was materially justified: the simple delegation
-verifier executed worker-provided shell text with `shell=True`, no timeout or
-allowlist, and returned raw stdout/stderr. A compromised or mistaken provider
-could execute arbitrary local commands and expose local data through verifier
-evidence.
+The broader command audit was materially justified. Both delegation lanes had
+local execution risk:
 
-That immediate provider-controlled execution path is repaired in this draft.
-The source/package classification is temporarily **HOLD pending exact-head CI**.
+1. the provider-controlled verifier accepted worker-suggested shell text; and
+2. the work-packet sandbox accepted steward-configured shell strings for both
+   preflight and post-patch checks.
+
+The active runtime paths for both lanes now use the same fail-closed bounded
+recipe executor with a cleaned environment and redacted digest receipts.
+
+Current classification:
+
+**HOLD — active command paths contained; exact-head CI and legacy-body removal
+pending.**
 
 ## Open blockers
 
-- Work-packet `allowed_commands` still use raw shell strings with `shell=True`.
-  They are steward-provided rather than provider-selected, but still require a
-  typed recipe model, clean environment, network/process isolation decision,
-  redacted digest receipts, and migration tests.
+- The superseded `shell=True` method bodies remain physically present in
+  `codexsaver/work_packet.py` and are replaced at package import by the guard.
+  They must be deleted in a direct module refactor before public release so
+  static scanners and unusual loader paths cannot encounter misleading code.
+- Exact-head compile/test/package validation is pending.
+- Network egress and stronger process isolation remain policy decisions; the
+  cleaned environment is not a network sandbox.
 - Orchestration worktrees, patch aggregation records, transcript persistence,
-  and future session/recovery records still require the same topology and
-  sensitive-output audit.
+  and future session/recovery records still require topology, credential, and
+  retention auditing.
 - The repository has no selected source license.
 - No PyPI ownership, trusted publishing identity, or package-name availability
   has been verified.
-- No authenticated release, checksum set, provenance attestation, or consumer
-  verification receipt exists.
+- No authenticated immutable release, checksum set, provenance attestation, or
+  consumer-verification receipt exists.
 - Global install/update/rollback/removal behavior needs a disposable fixture.
 - Provider credential storage and configuration-file permissions need
   cross-platform fixture coverage.
 - Live hosted-provider behavior requires explicit credentials and authorization.
-- Repository security and immutable-release settings require administrative
-  verification.
+- Repository security, private vulnerability reporting, branch policy, secret
+  scanning, push protection, and immutable-release settings require
+  administrative verification.
 
 ## External comparison provenance
 
-Current agent-sandbox practice favors repository-scoped filesystems, isolated
-execution, explicit network/credential policy, and provenance-bearing evidence.
-This batch narrows provider-suggested local checks to approved argv recipes with
-cleaned environment and redacted receipts. It does not claim network isolation.
+Current agent execution systems favor repository-scoped filesystems, explicit
+runtime images and user identities, disabled host networking by default where
+practical, credential minimization, and provenance-bearing evidence. This draft
+adapts those principles to CodexSaver's lightweight verifier through copied
+workspaces, a minimal child environment, bounded recipes, no shell, redacted
+outputs, and content-addressed receipts. It does not claim container or network
+isolation.
 
-Current Python packaging guidance supports PEP 517/518 metadata, wheel plus sdist
-construction, and testing the sdist boundary before publication. The existing
-draft preserves that flow without claiming registry publication.
+Current GitHub release practice supports immutable full-SHA Action references,
+artifact attestations, and immutable release assets. The draft pins Actions by
+full commit SHA but does not claim an authenticated release.
 
 ## Reconsideration triggers
 
-New head or CI result, command-policy change, work-packet recipe migration,
-sandbox/egress implementation, provider/session evidence change, license or
-registry decision, lifecycle fixture, security incident, or explicit steward
+New head or CI result, direct removal of the legacy shell bodies, command-policy
+change, sandbox/egress implementation, provider/session evidence change, license
+or registry decision, lifecycle fixture, security incident, or explicit steward
 request.
 
 ## Next action
 
-Obtain an exact-head compile/test/package receipt. Then replace work-packet shell
-strings with typed verification recipes and audit returned transcripts,
-orchestration worktrees, patch aggregation, and recovery/session state.
+Obtain an exact-head compile/test/package receipt. Then refactor
+`codexsaver/work_packet.py` to contain the bounded methods directly and remove
+the compatibility guard plus all legacy `shell=True` code. Continue with the
+transcript, worktree, patch-aggregation, and recovery-state audit after that
+source cleanup.
