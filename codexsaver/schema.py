@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict, field
+from pathlib import Path
 from typing import Any, Dict, List, Literal
 
 RiskLevel = Literal["low", "medium", "high"]
@@ -190,5 +191,32 @@ class AggregationResult:
     codex_review_notes: List[str]
 
 
+def _safe_delegated_path(raw: str) -> str:
+    """Return a provider-safe relative identity or an explicit refusal marker."""
+    path = Path(raw)
+    if path.is_absolute() or any(part == ".." for part in path.parts):
+        return "<refused-path>"
+    normalized = path.as_posix()
+    return normalized if normalized not in {"", "."} else "."
+
+
+def _sanitize_delegated_payload(value: Any, key: str | None = None) -> Any:
+    """Remove host-local topology from dataclass payloads sent to workers.
+
+    Runtime objects retain their real workspace for local filesystem operations.
+    Only serialized payloads are normalized. Path-policy lists are also refused
+    when they contain absolute paths or explicit parent traversal.
+    """
+    if key == "workspace":
+        return "."
+    if key in {"files", "allowed_files", "forbidden_paths"} and isinstance(value, list):
+        return [_safe_delegated_path(str(item)) for item in value]
+    if isinstance(value, dict):
+        return {name: _sanitize_delegated_payload(child, name) for name, child in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_delegated_payload(child) for child in value]
+    return value
+
+
 def to_dict(obj: Any) -> Dict[str, Any]:
-    return asdict(obj)
+    return _sanitize_delegated_payload(asdict(obj))
