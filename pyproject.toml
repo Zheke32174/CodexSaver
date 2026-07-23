@@ -1,9 +1,17 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "codexsaver"
 version = "0.3.6"
 description = "Cost-aware LLM delegation tool for Codex"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
 
 [project.scripts]
 codexsaver = "cli:main"

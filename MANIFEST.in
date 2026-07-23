@@ -1,0 +1,5 @@
+include README.md
+include SECURITY.md
+include RELEASE_READINESS_CHECKPOINT.md
+include MODOS_COMPONENT.yaml
+recursive-include docs *.md *.json

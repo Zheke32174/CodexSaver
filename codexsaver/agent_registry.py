@@ -37,7 +37,13 @@ class AgentCard:
 
 
 class AgentRegistry:
-    """Discovers worker Agent Cards without network calls."""
+    """Discovers worker Agent Cards without network calls.
+
+    Repository-controlled Agent Card directories are confined to the selected
+    workspace. Explicit constructor-provided directories and the user's global
+    registry remain trusted local configuration, but their absolute paths are
+    never exposed through card metadata.
+    """
 
     def __init__(self, extra_dirs: List[str] | None = None):
         self.extra_dirs = extra_dirs or []
@@ -45,11 +51,11 @@ class AgentRegistry:
     def discover(self, workspace: str = ".") -> List[AgentCard]:
         root = Path(workspace).resolve()
         cards: Dict[str, AgentCard] = {builtin_pi_agent().id: builtin_pi_agent()}
-        for directory in self._scan_dirs(root):
+        for directory, source_scope in self._scan_dirs(root):
             if not directory.exists() or not directory.is_dir():
                 continue
             for path in sorted(directory.glob("*.agent-card.json")):
-                card = self._load_card(path)
+                card = self._load_card(path, root, source_scope)
                 if card:
                     cards[card.id] = card
         return [cards[key] for key in sorted(cards)]
@@ -59,22 +65,41 @@ class AgentRegistry:
         target = root / ".pi-agents" / "pi-agent.agent-card.json"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
-            json.dumps(asdict(builtin_pi_agent(source=str(target))), ensure_ascii=False, indent=2) + "\n",
+            json.dumps(
+                asdict(builtin_pi_agent(source=".pi-agents/pi-agent.agent-card.json")),
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
             encoding="utf-8",
         )
         return str(target)
 
-    def _scan_dirs(self, root: Path) -> List[Path]:
+    def _scan_dirs(self, root: Path) -> List[tuple[Path, str]]:
         configured = load_project_config(str(root)).get("agent_card_dirs", [])
-        dirs = [root / item for item in DEFAULT_AGENT_CARD_DIRS]
-        dirs.extend(root / str(item) for item in configured if isinstance(item, str))
-        dirs.extend(Path(item).expanduser() for item in self.extra_dirs)
-        dirs.append(Path.home() / ".codexsaver" / "agents")
+        dirs: List[tuple[Path, str]] = [
+            (root / item, "workspace") for item in DEFAULT_AGENT_CARD_DIRS
+        ]
+        for item in configured:
+            if not isinstance(item, str):
+                continue
+            candidate = (root / item).resolve()
+            try:
+                candidate.relative_to(root)
+            except ValueError:
+                continue
+            dirs.append((candidate, "workspace"))
+        dirs.extend((Path(item).expanduser().resolve(), "explicit") for item in self.extra_dirs)
+        dirs.append(((Path.home() / ".codexsaver" / "agents").resolve(), "global"))
         return list(dict.fromkeys(dirs))
 
-    def _load_card(self, path: Path) -> AgentCard | None:
+    def _load_card(self, path: Path, root: Path, source_scope: str) -> AgentCard | None:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
+            if source_scope == "workspace":
+                source = path.resolve().relative_to(root).as_posix()
+            else:
+                source = f"{source_scope}-agent-registry/{path.name}"
             return AgentCard(
                 id=str(raw["id"]),
                 name=str(raw.get("name") or raw["id"]),
@@ -95,7 +120,7 @@ class AgentRegistry:
                 permissions_config=str(raw.get("permissions_config", ".pi/permissions.json")),
                 filesystem_policy=str(raw.get("filesystem_policy", "worktree_write_only")),
                 network_policy=str(raw.get("network_policy", "llm_api_only")),
-                source=str(path),
+                source=source,
             )
         except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
             return None
